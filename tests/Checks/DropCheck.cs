@@ -119,7 +119,7 @@ internal static class DropCheck
         descriptor.AddValueChanged(progress, StopAtSecond);
         try { Drop(window, [first, second]); }
         finally { descriptor.RemoveValueChanged(progress, StopAtSecond); }
-        if (library.State.Sounds.Count != before + 1 || Directory.EnumerateFiles(library.ClipsDirectory, "*.part").Any())
+        if (library.State.Sounds.Count != before + 1 || Directory.EnumerateFiles(library.ClipsDirectory).Any(p => p.EndsWith(".part") || p.EndsWith(".decode")))
             throw new Exception("Cancelling a batch must keep completed pads and remove unfinished files.");
     }
 

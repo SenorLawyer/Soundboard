@@ -103,11 +103,13 @@ internal static class ClipImporter
         timeout.CancelAfter(TimeSpan.FromMinutes(2));
         try
         {
-            var gain = await MeasureGainAsync(source, timeout.Token).ConfigureAwait(false);
+            int frames = size / BytesPerFrame;
+            double windowFraction = Math.Min(1, frames / (0.4 * rate));
+            var gain = await MeasureGainAsync(source, windowFraction, timeout.Token).ConfigureAwait(false);
             var start = Ffmpeg(source, "error");
             // Look ahead at 192 kHz for stereo peaks. Padding flushes the limiter and resamplers
             // even on one-frame clips. The trim restores the exact original frame count.
-            string filter = FormattableString.Invariant($"apad=pad_dur=0.1,volume={gain:F2}dB:precision=double,aresample=192000,alimiter=limit=0.75:attack=5:release=60:level=0:latency=1,aresample={rate},atrim=end_sample={size / BytesPerFrame}");
+            string filter = FormattableString.Invariant($"apad=pad_dur=0.1,volume={gain:F2}dB:precision=double,aresample=192000,alimiter=limit=0.75:attack=5:release=60:level=0:latency=1,aresample={rate},atrim=end_sample={frames}");
             start.ArgumentList.Add("-af"); start.ArgumentList.Add(filter);
             await WriteWaveAsync(start, destination, rate, size, timeout.Token).ConfigureAwait(false);
         }
@@ -117,12 +119,13 @@ internal static class ClipImporter
         }
     }
 
-    private static async Task<double> MeasureGainAsync(string source, CancellationToken token)
+    private static async Task<double> MeasureGainAsync(string source, double windowFraction, CancellationToken token)
     {
         var start = Ffmpeg(source, "info");
         // The second meter hears the mono voice feed. The first guards against overboosting
         // stereo whose channels cancel in mono. Padding includes the last partial 400 ms window.
-        const string meters = "apad=pad_dur=0.4,ebur128@stereo=framelog=verbose,pan=mono|c0=0.5*c0+0.5*c1,ebur128@voice=framelog=verbose";
+        string padding = windowFraction < 1 ? "apad=whole_dur=0.4" : "apad=pad_dur=0.4";
+        string meters = padding + ",ebur128@stereo=framelog=verbose,pan=mono|c0=0.5*c0+0.5*c1,ebur128@voice=framelog=verbose";
         foreach (string arg in new[] { "-af", meters, "-f", "null", "-" })
             start.ArgumentList.Add(arg);
         token.ThrowIfCancellationRequested();
@@ -140,6 +143,9 @@ internal static class ClipImporter
                     ? value : throw new InvalidDataException("Could not read the clip's loudness measurement.");
             }
             double loudness = Math.Max(Integrated("voice"), Integrated("stereo") - 6);
+            // On a sub-400 ms clip the meter also counted our added silence. Recover the
+            // average energy of the original interval so its length alone cannot add gain.
+            if (loudness > -70) loudness -= 10 * Math.Log10(windowFraction);
             // The global 70% send turns a -15 LUFS library copy into roughly -18 LUFS on B1.
             return Math.Min(30, -15 - loudness);
         }

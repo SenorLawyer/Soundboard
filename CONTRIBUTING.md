@@ -35,7 +35,7 @@ python tests/voice-loopback.py artifacts/Windows-x64 --import-proof artifacts/vo
 
 Optionally install `vosk` and add `--speech-model path/to/vosk-model-small-en-us-0.15` to transcribe the received Signal check. [Vosk English model](https://alphacephei.com/vosk/models)
 
-The import fixture starts with the spoken count attenuated by 24 dB. CI drops it through the Windows OLE target and feeds the resulting library WAV to the receiver check. The local command above exercises the same import and catalog code without opening a window. Imported copies target −15 LUFS before the master volume, with at most 30 dB of boost and a stereo peak limiter.
+The import fixture starts with the spoken count attenuated by 24 dB. CI drops it through the Windows OLE target and feeds the resulting library WAV to the receiver check. The local command above exercises the same import and catalog code without opening a window. Imported copies target −15 LUFS before the master volume, with at most 30 dB of boost and a stereo peak limiter. Clips shorter than the meter's 400 ms window are adjusted for their actual duration.
 
 The check downloads a hash-pinned 300 KB RNNoise test model. Pass `--noise-model path/to/cb.rnnn` to use an offline copy. Discord's proprietary Krisp filter can give different results. [RNNoise test model](https://github.com/GregorR/rnnoise-models/blob/3eee541a283fd3b8f81b85b1748e3b9ccbefa04d/conjoined-burgers-2018-08-28/cb.rnnn)
 

@@ -76,7 +76,7 @@ internal static class ImportLevelsCheck
         if (File.Exists(cached) || Directory.EnumerateFiles(reopened.ClipsDirectory, "*.part").Any())
             throw new Exception("Cancelled preparation left a cache or a staged file.");
 
-        static void WriteStereo(string path, int sampleRate, int frames, Func<int, short> sample, bool opposite = false)
+        static void WriteStereo(string path, int sampleRate, int frames, Func<int, short> left, Func<int, short>? right = null)
         {
             using var file = new BinaryWriter(File.Create(path));
             file.Write("RIFF"u8); file.Write(36 + frames * 4); file.Write("WAVEfmt "u8); file.Write(16);
@@ -84,8 +84,7 @@ internal static class ImportLevelsCheck
             file.Write((short)4); file.Write((short)16); file.Write("data"u8); file.Write(frames * 4);
             for (int i = 0; i < frames; i++)
             {
-                short left = sample(i);
-                file.Write(left); file.Write((short)(opposite ? -left + 1 : 0));
+                file.Write(left(i)); file.Write(right?.Invoke(i) ?? (short)0);
             }
         }
         string result = Path.Combine(temp, "leveled.wav");
@@ -106,9 +105,25 @@ internal static class ImportLevelsCheck
         WriteStereo(source, 48000, 48000, i => (short)(30000 * Math.Sin(i * 0.08)));
         await ClipImporter.LevelAsync(source, result, default);
         if (Peak(Wave.Read(result)) >= 27000) throw new Exception("A loud clip was not turned down.");
-        WriteStereo(source, 48000, 48000, i => (short)(15000 * Math.Sin(i * 0.08)), opposite: true);
+        static short Wide(int i) => (short)(15000 * Math.Sin(i * 0.08));
+        WriteStereo(source, 48000, 48000, Wide, i => (short)(1 - Wide(i)));
         await ClipImporter.LevelAsync(source, result, default);
         if (Peak(Wave.Read(result)) >= 24000) throw new Exception("Stereo cancellation caused excessive gain.");
+        static short Beep(int i) => (short)(1000 * Math.Sin(2 * Math.PI * 1000 * i / 48000));
+        WriteStereo(source, 48000, 2400, Beep);
+        await ClipImporter.LevelAsync(source, result, default);
+        int shortPeak = Peak(Wave.Read(result));
+        WriteStereo(source, 48000, 48000, Beep);
+        await ClipImporter.LevelAsync(source, result, default);
+        if (Math.Abs(20 * Math.Log10((double)shortPeak / Peak(Wave.Read(result)))) > 2)
+            throw new Exception("A 50 ms beep should play near the same level as a one-second beep.");
+        WriteStereo(source, 48000, 48000, i => i == 24000 ? (short)32000 : Beep(i), Beep);
+        await ClipImporter.LevelAsync(source, result, default);
+        var stereo = Wave.Read(result);
+        int RightPeakAt(int frame) => MemoryMarshal.Cast<byte, short>(stereo.Bytes.AsSpan(frame * 4, 48 * 4))
+            .ToArray().Where((_, i) => i % 2 != 0).Max(v => Math.Abs((int)v));
+        if (RightPeakAt(24000) > RightPeakAt(12000) * 0.5 || RightPeakAt(36000) < RightPeakAt(12000) * 0.9)
+            throw new Exception("A transient in one channel should briefly limit both stereo channels together.");
         Console.WriteLine("Import leveling passed: quiet voice, loud audio, short stereo peak, silence and existing library.");
     }
 }
