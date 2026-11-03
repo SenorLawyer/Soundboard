@@ -43,6 +43,10 @@ internal static class Program
                 Require(Math.Abs(1000.0 * demo.Frames / demo.Rate - sound.DurationMs) < 1, "Starter duration mismatch.");
             }
             Require(Library.Matches("Quick applause", "qapl") && !Library.Matches("Air horn", "coins"), "Search filter mismatch.");
+            var attempts = new System.Collections.Generic.List<uint>();
+            string? shortcut = Shell.BindLauncher(modifiers => { attempts.Add(modifiers); return modifiers == 6; });
+            Require(shortcut == "Ctrl+Shift+Space" && attempts.SequenceEqual(new uint[] { 3, 6 }), "An occupied launcher shortcut must fall back to Ctrl+Shift+Space.");
+            Require(Shell.BindLauncher(_ => true) == "Ctrl+Alt+Space" && Shell.BindLauncher(_ => false) == null, "The launcher must report the shortcut it actually acquired.");
 
             // A real 22.05 kHz mono file exercises the Windows decoder and stereo expansion.
             const int rate = 22050, frames = 3307;

@@ -38,7 +38,15 @@ public partial class MainWindow : Window
         Sounds.PreviewMouseLeftButtonUp += (_, _) => Dispatcher.BeginInvoke(DispatcherPriority.Input, () => { if (panel == "" && edit == "") Search.Focus(); });
         transport.Tick += (_, _) => Tick();
         noticeTimer.Tick += (_, _) => { noticeTimer.Stop(); Notice.Visibility = Visibility.Collapsed; };
-        ContentRendered += (_, _) => { RefreshRoute(); FocusSearch(); };
+        ContentRendered += FirstRender;
+    }
+
+    private void FirstRender(object? sender, EventArgs e)
+    {
+        ContentRendered -= FirstRender;
+        RefreshRoute(); FocusSearch();
+        if (shell?.Unavailable.Count > 0) Report("Shortcut already in use: " + string.Join(", ", shell.Unavailable));
+        else if (shell?.LauncherShortcut == "Ctrl+Shift+Space") Report("Ctrl+Alt+Space is in use. Press Ctrl+Shift+Space to open Soundboard.");
     }
 
     protected override void OnSourceInitialized(EventArgs e)
@@ -48,7 +56,6 @@ public partial class MainWindow : Window
         if (!shell.Acrylic) Chrome.Background = new SolidColorBrush(Color.FromRgb(35, 34, 38));
         foreach (var sound in library.State.Sounds.Where(s => s.Slot != 0))
             if (!shell.BindSlot(sound.Slot)) shell.Unavailable.Add(sound.Shortcut);
-        if (shell.Unavailable.Count > 0) Report("Shortcut already in use: " + string.Join(", ", shell.Unavailable));
     }
 
     public void FocusSearch() { ClosePanel(); Search.Focus(); Keyboard.Focus(Search); }

@@ -45,7 +45,7 @@ public partial class MainWindow
                 if (active != null || loading) Add("Stop playback", "\uE71A", "Ctrl Alt ⌫", Stop);
                 Add("Import sounds…", "\uE710", "Ctrl O", ChooseFiles);
                 Add("Audio routing", "\uE9E9", "", () => ShowMenu("Audio routing"));
-                Add("Hide Soundboard", "\uE738", "Esc", HidePalette);
+                Add("Hide Soundboard", "\uE738", shell?.LauncherShortcut ?? "Esc", HidePalette);
                 Add("Quit Soundboard", "\uE7E8", "", Quit);
                 break;
             case "Audio routing":

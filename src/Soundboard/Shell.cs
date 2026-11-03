@@ -27,6 +27,7 @@ internal sealed class Shell : IDisposable
     private readonly HashSet<int> ids = [];
     private readonly Action<int> shortcut;
     public bool Acrylic { get; }
+    public string? LauncherShortcut { get; }
     public List<string> Unavailable { get; } = [];
 
     public Shell(MainWindow window, Action<int> shortcut)
@@ -47,13 +48,15 @@ internal sealed class Shell : IDisposable
         using var original = new Icon(stream);
         icon = (Icon)original.Clone();
         menu = new Forms.ContextMenuStrip();
-        menu.Items.Add("Open Soundboard", null, (_, _) => Show());
+        LauncherShortcut = BindLauncher(modifiers => Bind(1, 0x20, modifiers));
+        var open = (Forms.ToolStripMenuItem)menu.Items.Add("Open Soundboard", null, (_, _) => Show());
+        open.ShortcutKeyDisplayString = LauncherShortcut ?? "";
         menu.Items.Add("Stop sound", null, (_, _) => shortcut(2));
         menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add("Quit Soundboard", null, (_, _) => window.Quit());
-        tray = new Forms.NotifyIcon { Text = "Soundboard", Icon = icon, ContextMenuStrip = menu, Visible = true };
+        tray = new Forms.NotifyIcon { Text = LauncherShortcut == null ? "Soundboard" : $"Soundboard ({LauncherShortcut})", Icon = icon, ContextMenuStrip = menu, Visible = true };
         tray.MouseClick += (_, e) => { if (e.Button == Forms.MouseButtons.Left) Show(); };
-        if (!Bind(1, 0x20)) Unavailable.Add("Ctrl+Alt+Space");
+        if (LauncherShortcut == null) Unavailable.Add("Ctrl+Alt+Space and Ctrl+Shift+Space");
         if (!Bind(2, 0x08)) Unavailable.Add("Ctrl+Alt+Backspace");
     }
 
@@ -63,10 +66,16 @@ internal sealed class Shell : IDisposable
         PostMessage(new IntPtr(0xffff), ShowMessage, IntPtr.Zero, IntPtr.Zero);
     }
 
-    private bool Bind(int id, uint key)
+    internal static string? BindLauncher(Func<uint, bool> register)
+    {
+        if (register(3)) return "Ctrl+Alt+Space";
+        return register(6) ? "Ctrl+Shift+Space" : null;
+    }
+
+    private bool Bind(int id, uint key, uint modifiers = 3)
     {
         if (ids.Contains(id)) return true;
-        if (!RegisterHotKey(source.Handle, id, 0x4003 /* no repeat, Ctrl+Alt */, key)) return false;
+        if (!RegisterHotKey(source.Handle, id, 0x4000 /* no repeat */ | modifiers, key)) return false;
         ids.Add(id);
         return true;
     }

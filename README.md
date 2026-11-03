@@ -16,7 +16,7 @@ Keep B1 enabled on the physical mic strip. Any strip you already send to B1 will
 
 | Action | Shortcut |
 | --- | --- |
-| Show or hide the launcher from any app | Ctrl+Alt+Space |
+| Show or hide the launcher from any app | Ctrl+Alt+Space, or Ctrl+Shift+Space if the first shortcut is in use |
 | Stop playback from any app | Ctrl+Alt+Backspace |
 | Find a clip and move through results | Type, then ↑ or ↓ |
 | Play or stop the selected clip | Enter |
@@ -26,7 +26,7 @@ Keep B1 enabled on the physical mic strip. Any strip you already send to B1 will
 | Toggle favorite / rename | Ctrl+D / F2 |
 | Play a clip from a game | Assign Ctrl+Alt+1 through 9 in Actions |
 
-Esc closes the current panel, stops playback, clears the search, or hides the window, in that order. The tray icon opens the launcher and has a Quit command.
+Esc closes the current panel, stops playback, clears the search, or hides the window, in that order. The tray icon shows the active launcher shortcut and has Open and Quit commands. If both shortcuts are taken, use the tray icon to open Soundboard.
 
 ## Files and routing
 
