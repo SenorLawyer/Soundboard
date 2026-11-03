@@ -14,6 +14,14 @@ Watch the [Windows walkthrough and screenshot gallery](https://github.com/SenorL
 
 Keep B1 enabled on the physical mic strip. Any strip you already send to B1 will still reach the call. Push-to-talk and voice filtering in the receiving app also apply to clips.
 
+### I can preview a pad but my friend can't hear it
+
+Click the **Signal check** pad. Your friend should hear a voice count “one, two, three.” The headphones button plays only on your own speakers or headset.
+
+If the count gets through but claps or chimes disappear, open Discord's **User Settings → Voice & Video**. Under **Noise Suppression**, select **None**. If short clips still miss the start, try **Push to Talk** and hold the key from just before clicking the pad until the sound finishes. Push to Talk opens the voice gate. Noise suppression is a separate setting. [Discord's Krisp FAQ](https://support.discord.com/hc/en-us/articles/360040843952-Krisp-FAQ)
+
+If the count is also missing, check that Discord's **Input Device** is **Voicemeeter Out B1** and that Soundboard's **Out B1 → Clip volume** is audible. Use the routing menu's **Hear clips while sending** option if you want to hear a pad locally at the same time.
+
 ## Keyboard
 
 | Action | Shortcut |
@@ -55,4 +63,4 @@ Run `./scripts/build.ps1` on Windows to build and test, or add `-Package` for a 
 
 ## License
 
-Soundboard and its original starter sounds are [MIT licensed](LICENSE). The [third-party notices](THIRD-PARTY.md) cover the font, grid, codec helper and runtimes.
+Soundboard's code is [MIT licensed](LICENSE). The six starter recordings are [CC0](licenses/CC0-1.0.txt). The [third-party notices](THIRD-PARTY.md) credit each sound and cover the font, grid, codec helper and runtimes.

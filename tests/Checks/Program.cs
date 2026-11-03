@@ -43,6 +43,19 @@ internal static class Program
                 var demo = Wave.Read(lib.FileFor(sound));
                 Require(Math.Abs(1000.0 * demo.Frames / demo.Rate - sound.DurationMs) < 1, "Starter duration mismatch.");
             }
+            // An existing user renamed a starter, removed others, and kept a local recording.
+            string upgrade = Path.Combine(temp, "upgrade");
+            Directory.CreateDirectory(Path.Combine(upgrade, "Clips"));
+            var applause = lib.State.Sounds[1] with { Name = "Nice round", DurationMs = 1600, Favorite = false, Slot = 3 };
+            var local = lib.State.Sounds[5] with { DurationMs = lib.State.Sounds[0].DurationMs };
+            File.Copy(lib.FileFor(lib.State.Sounds[0]), Path.Combine(upgrade, "Clips", local.Id.ToString("N") + ".wav"));
+            var imported = new Sound(Guid.NewGuid(), "My recording", 2150, 2, "MP3");
+            var oldCatalog = new Catalog([imported, applause, local], new Routing(25, 1, true), true);
+            File.WriteAllText(Path.Combine(upgrade, "library.json"), System.Text.Json.JsonSerializer.Serialize(oldCatalog));
+            var upgraded = new Library(upgrade, assets).State;
+            Require(upgraded.Sounds.SequenceEqual([imported, applause with { DurationMs = lib.State.Sounds[1].DurationMs }, local]) &&
+                    upgraded.Routing == oldCatalog.Routing && upgraded.FallbackHintSeen,
+                    "Updating bundled audio must preserve the user's edits, removals, local copies and routing.");
             Require(Library.Matches("Quick applause", "qapl") && !Library.Matches("Air horn", "coins"), "Search filter mismatch.");
             var attempts = new System.Collections.Generic.List<uint>();
             string? shortcut = Shell.BindLauncher(modifiers => { attempts.Add(modifiers); return modifiers == 6; });

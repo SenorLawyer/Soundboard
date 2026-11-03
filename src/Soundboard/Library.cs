@@ -38,10 +38,10 @@ public sealed class Library
         this.assets = assets;
         Directory.CreateDirectory(ClipsDirectory);
         index = Path.Combine(root, "library.json");
-        State = File.Exists(index) ? Read(index) : Defaults();
+        State = File.Exists(index) ? Read(index) : new Catalog([.. Starters], new Routing());
     }
 
-    private static Catalog Read(string path)
+    private Catalog Read(string path)
     {
         var catalog = JsonSerializer.Deserialize<Catalog>(File.ReadAllText(path), Json);
         if (catalog?.Sounds == null || catalog.Routing is not { Volume: >= 0 and <= 100, PreviewBus: 0 or 1 } ||
@@ -50,17 +50,26 @@ public sealed class Library
             catalog.Sounds.Select(s => s.Id).Distinct().Count() != catalog.Sounds.Count ||
             catalog.Sounds.Where(s => s.Slot != 0).GroupBy(s => s.Slot).Any(g => g.Count() > 1))
             throw new InvalidDataException("The sound library is damaged. Your clip files are still in the Clips folder.");
+        // A saved starter uses the recording shipped with this build unless it has a local copy.
+        for (int i = 0; i < catalog.Sounds.Count; i++)
+        {
+            var sound = catalog.Sounds[i];
+            if (StarterDurations.TryGetValue(sound.Id, out int duration) && sound.DurationMs != duration &&
+                !File.Exists(Path.Combine(ClipsDirectory, sound.Id.ToString("N") + ".wav")))
+                catalog.Sounds[i] = sound with { DurationMs = duration };
+        }
         return catalog;
     }
 
-    private static Catalog Defaults() => new([
-        Starter(1, "Air horn", 1150, 0, true),
-        Starter(2, "Quick applause", 1600, 1, true),
-        Starter(3, "Coin drop", 690, 2),
-        Starter(4, "Glass ping", 920, 3),
+    private static readonly Sound[] Starters = [
+        Starter(1, "Air horn", 1580, 0, true),
+        Starter(2, "Quick applause", 2750, 1, true),
+        Starter(3, "Coin drop", 1290, 2),
+        Starter(4, "Glass ping", 1220, 3),
         Starter(5, "Power down", 1080, 4),
-        Starter(6, "Signal check", 780, 5)
-    ], new Routing());
+        Starter(6, "Signal check", 1914, 5)
+    ];
+    private static readonly Dictionary<Guid, int> StarterDurations = Starters.ToDictionary(s => s.Id, s => s.DurationMs);
 
     private static Sound Starter(int n, string name, int ms, int icon, bool favorite = false) =>
         new(new Guid(n, 0, 0, new byte[8]), name, ms, icon, "WAV", favorite);
