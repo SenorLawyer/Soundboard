@@ -17,6 +17,7 @@ internal static class Program
     private static void Main(string[] args)
     {
         if (args is ["--drop"]) { DropCheck.Run(); return; }
+        if (args is ["--drop", var dropProof]) { DropCheck.Run(proof: Path.GetFullPath(dropProof)); return; }
         if (args is ["--formats", var corpus]) { DropCheck.Run(Path.GetFullPath(corpus)); return; }
         // Opt-in hardware bench. The standard checks use an isolated library.
         if (args is ["--live", var file, var route])
@@ -36,6 +37,7 @@ internal static class Program
         try
         {
             string assets = Path.Combine(AppContext.BaseDirectory, "Assets", "Sounds");
+            ImportLevelsCheck.Run(temp, assets, args is ["--import-proof", var proof] ? Path.GetFullPath(proof) : null).GetAwaiter().GetResult();
             var lib = new Library(temp, assets);
             Require(lib.State.Sounds.Count == 6, "First launch must include six playable starter sounds.");
             foreach (var sound in lib.State.Sounds)

@@ -22,7 +22,15 @@ internal sealed record Wave(byte[] Bytes, int Rate, int Frames)
     // Files in the library always use our canonical stereo PCM header.
     internal static Wave Read(string path)
     {
-        using var stream = File.OpenRead(path);
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
+        var (rate, size) = ReadHeader(stream);
+        var pcm = GC.AllocateUninitializedArray<byte>(size, pinned: true);
+        stream.ReadExactly(pcm);
+        return new(pcm, rate, size / 4);
+    }
+
+    internal static (int Rate, int Size) ReadHeader(Stream stream)
+    {
         if (stream.Length is <= 44 or > (128L * 1024 * 1024 + 44)) throw new InvalidDataException("This clip is empty or too large.");
         Span<byte> h = stackalloc byte[44];
         stream.ReadExactly(h);
@@ -32,9 +40,7 @@ internal sealed record Wave(byte[] Bytes, int Rate, int Frames)
             Word(h, 16) != 16 || Word(h, 20) != 0x00020001 || Word(h, 32) != 0x00100004 ||
             rate is < 8000 or > 192000 || size <= 0 || size % 4 != 0 || size != stream.Length - 44 || size / 4 > (long)rate * 300)
             throw new InvalidDataException("This library clip is damaged. Import the original file again.");
-        var pcm = GC.AllocateUninitializedArray<byte>(size, pinned: true);
-        stream.ReadExactly(pcm);
-        return new(pcm, rate, size / 4);
+        return (rate, size);
     }
 }
 

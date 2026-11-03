@@ -20,7 +20,7 @@ internal static class DropCheck
         Marshal.GetDelegateForFunctionPointer<T>(Marshal.ReadIntPtr(Marshal.ReadIntPtr(target), slot * IntPtr.Size));
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern IntPtr GetProp(IntPtr window, string name);
-    internal static void Run(string? corpus = null)
+    internal static void Run(string? corpus = null, string? proof = null)
     {
         string root = Directory.CreateTempSubdirectory("SoundboardDrop-").FullName;
         var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
@@ -33,7 +33,7 @@ internal static class DropCheck
             window.UpdateLayout();
             var source = Path.Combine(root, "Drop check.wav");
             var unnamed = Path.Combine(root, ".wav");
-            File.Copy(library.FileFor(library.State.Sounds[0]), source);
+            ImportLevelsCheck.WriteQuietVoice(Path.Combine(AppContext.BaseDirectory, "Assets", "Sounds"), source);
             File.Copy(source, unnamed);
             var folder = Directory.CreateDirectory(Path.Combine(root, "drop folder")).FullName;
             var webm = Path.Combine(folder, "clip.webm");
@@ -61,6 +61,7 @@ internal static class DropCheck
             var list = (ListBox)window.FindName("Sounds");
             if (list.Items.Count != 1 || !Equals(list.SelectedItem, added)) throw new Exception("Imported clip was not searchable and selected.");
             if (!File.Exists(source) || Wave.Read(library.FileFor(added)).Frames == 0) throw new Exception("The dropped clip did not import.");
+            if (proof != null) ImportLevelsCheck.Export(proof, source, library.FileFor(added));
             CheckBatchCancel(window, library, webm, source);
             CheckPalette(window, library, added);
             Console.WriteLine("Desktop passed: OLE import, search recovery, menu navigation and safe cancellation.");

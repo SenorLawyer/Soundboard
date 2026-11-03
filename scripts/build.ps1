@@ -9,7 +9,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Windows application build failed.' }
     dotnet run --project tests/Checks -c Release
     if ($LASTEXITCODE -ne 0) { throw 'Library and decoder checks failed.' }
-    dotnet run --project tests/Checks -c Release --no-build -- --drop
+    dotnet run --project tests/Checks -c Release --no-build -- --drop "$root/artifacts/voice-import-proof"
     if ($LASTEXITCODE -ne 0) { throw 'Windows file-drop check failed.' }
     if ($Package) {
         # A new staging directory keeps stale runtime files out of each archive.

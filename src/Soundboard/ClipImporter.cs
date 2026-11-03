@@ -1,7 +1,9 @@
 using System;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -11,7 +13,17 @@ internal static class ClipImporter
 {
     private const int Rate = 48000;
     private const int BytesPerFrame = 4;
-    private const int MaxFrames = Rate * 300;
+    internal static async Task<int> ImportAsync(string source, string destination, CancellationToken token)
+    {
+        string decoded = destination + ".decode";
+        try
+        {
+            int duration = await DecodeAsync(source, decoded, token).ConfigureAwait(false);
+            await LevelAsync(decoded, destination, token).ConfigureAwait(false);
+            return duration;
+        }
+        finally { File.Delete(decoded); }
+    }
 
     public static async Task<int> DecodeAsync(string source, string destination, CancellationToken cancellation = default)
     {
@@ -64,17 +76,82 @@ internal static class ClipImporter
         await process.WaitForExitAsync().ConfigureAwait(false);
     }
 
-    private static async Task<int> DecodeWithFfmpeg(string source, string destination, CancellationToken token)
+    private static ProcessStartInfo Ffmpeg(string source, string verbosity)
+    {
+        var start = Helper("ffmpeg.exe");
+        start.RedirectStandardError = true;
+        foreach (string arg in new[] { "-nostdin", "-hide_banner", "-nostats", "-v", verbosity, "-xerror", "-threads", "1",
+            "-filter_threads", "1", "-protocol_whitelist", "file,pipe", "-i", source, "-map", "0:a:0", "-vn", "-sn", "-dn" })
+            start.ArgumentList.Add(arg);
+        return start;
+    }
+
+    private static Task<int> DecodeWithFfmpeg(string source, string destination, CancellationToken token)
+    {
+        var start = Ffmpeg(source, "error");
+        // Decode just past the limit so a long source is rejected instead of imported as a partial clip.
+        start.ArgumentList.Add("-t"); start.ArgumentList.Add("300.1");
+        return WriteWaveAsync(start, destination, Rate, null, token);
+    }
+
+    internal static async Task LevelAsync(string source, string destination, CancellationToken cancellation)
+    {
+        cancellation.ThrowIfCancellationRequested();
+        int rate, size;
+        using (var file = File.OpenRead(source)) (rate, size) = Wave.ReadHeader(file);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
+        timeout.CancelAfter(TimeSpan.FromMinutes(2));
+        try
+        {
+            var gain = await MeasureGainAsync(source, timeout.Token).ConfigureAwait(false);
+            var start = Ffmpeg(source, "error");
+            // Look ahead at 192 kHz for stereo peaks. Padding flushes the limiter and resamplers
+            // even on one-frame clips. The trim restores the exact original frame count.
+            string filter = FormattableString.Invariant($"apad=pad_dur=0.1,volume={gain:F2}dB:precision=double,aresample=192000,alimiter=limit=0.75:attack=5:release=60:level=0:latency=1,aresample={rate},atrim=end_sample={size / BytesPerFrame}");
+            start.ArgumentList.Add("-af"); start.ArgumentList.Add(filter);
+            await WriteWaveAsync(start, destination, rate, size, timeout.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!cancellation.IsCancellationRequested)
+        {
+            throw new InvalidDataException("Leveling this clip timed out.");
+        }
+    }
+
+    private static async Task<double> MeasureGainAsync(string source, CancellationToken token)
+    {
+        var start = Ffmpeg(source, "info");
+        // The second meter hears the mono voice feed. The first guards against overboosting
+        // stereo whose channels cancel in mono. Padding includes the last partial 400 ms window.
+        const string meters = "apad=pad_dur=0.4,ebur128@stereo=framelog=verbose,pan=mono|c0=0.5*c0+0.5*c1,ebur128@voice=framelog=verbose";
+        foreach (string arg in new[] { "-af", meters, "-f", "null", "-" })
+            start.ArgumentList.Add(arg);
+        token.ThrowIfCancellationRequested();
+        using var process = Start(start);
+        var report = process.StandardError.ReadToEndAsync();
+        try
+        {
+            await process.WaitForExitAsync(token).ConfigureAwait(false);
+            string summary = await report.ConfigureAwait(false);
+            if (process.ExitCode != 0) throw new InvalidDataException("Could not measure this clip's volume.");
+            double Integrated(string meter)
+            {
+                var match = Regex.Match(summary, @"\[ebur128@" + meter + @" @ [^\]]+\] Summary:\s*Integrated loudness:\s*I:\s*([-+]?\d+(?:\.\d+)?) LUFS");
+                return double.TryParse(match.Groups[1].Value, CultureInfo.InvariantCulture, out double value)
+                    ? value : throw new InvalidDataException("Could not read the clip's loudness measurement.");
+            }
+            double loudness = Math.Max(Integrated("voice"), Integrated("stereo") - 6);
+            // The global 70% send turns a -15 LUFS library copy into roughly -18 LUFS on B1.
+            return Math.Min(30, -15 - loudness);
+        }
+        finally { await Finish(process).ConfigureAwait(false); await report.ConfigureAwait(false); }
+    }
+
+    private static async Task<int> WriteWaveAsync(ProcessStartInfo start, string destination, int rate, int? expectedSize, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
-        var start = Helper("ffmpeg.exe");
-        start.RedirectStandardOutput = start.RedirectStandardError = true;
-        // Decode just past the limit so a long source is rejected instead of imported as a partial clip.
-        foreach (string arg in new[] { "-nostdin", "-hide_banner", "-v", "error", "-xerror", "-threads", "1",
-            "-protocol_whitelist", "file,pipe", "-i", source, "-map", "0:a:0", "-vn", "-sn", "-dn",
-            "-t", "300.1", "-ac", "2", "-ar", "48000", "-c:a", "pcm_s16le", "-f", "s16le", "pipe:1" })
+        start.RedirectStandardOutput = true;
+        foreach (string arg in new[] { "-ac", "2", "-ar", rate.ToString(CultureInfo.InvariantCulture), "-c:a", "pcm_s16le", "-f", "s16le", "pipe:1" })
             start.ArgumentList.Add(arg);
-
         using var process = Start(start);
         var errors = process.StandardError.BaseStream.CopyToAsync(Stream.Null);
         try
@@ -86,19 +163,21 @@ internal static class ClipImporter
             while ((read = await process.StandardOutput.BaseStream.ReadAsync(buffer, token).ConfigureAwait(false)) != 0)
             {
                 length += read;
-                if (length > MaxFrames * BytesPerFrame) throw new InvalidDataException("Clips must fit within five minutes.");
+                if (length > (long)rate * 300 * BytesPerFrame) throw new InvalidDataException("Clips must fit within five minutes.");
+                if (expectedSize.HasValue && length > expectedSize) throw new InvalidDataException("Leveling changed the clip length.");
                 await file.WriteAsync(buffer.AsMemory(0, read), token).ConfigureAwait(false);
             }
             await process.WaitForExitAsync(token).ConfigureAwait(false);
             if (process.ExitCode != 0 || length <= 0 || length % BytesPerFrame != 0)
                 throw new InvalidDataException("This file has no readable audio track.");
+            if (expectedSize.HasValue && length != expectedSize) throw new InvalidDataException("Leveling changed the clip length.");
 
             file.Position = 0;
             using var header = new BinaryWriter(file);
             header.Write("RIFF"u8); header.Write(36 + length); header.Write("WAVEfmt "u8); header.Write(16);
-            header.Write((short)1); header.Write((short)2); header.Write(Rate); header.Write(Rate * BytesPerFrame);
+            header.Write((short)1); header.Write((short)2); header.Write(rate); header.Write(rate * BytesPerFrame);
             header.Write((short)BytesPerFrame); header.Write((short)16); header.Write("data"u8); header.Write(length);
-            return (int)((length / BytesPerFrame * 1000L + Rate - 1) / Rate);
+            return (int)((length / BytesPerFrame * 1000L + rate - 1) / rate);
         }
         finally
         {

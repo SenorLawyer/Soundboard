@@ -28,10 +28,10 @@ public partial class MainWindow : Window
     private Shell? shell;
     private ListCollectionView? view;
     private Sound? active;
-    private int generation, lastPosition, activeFrames;
+    private int generation, lastPosition, activeFrames, pendingLoads;
     private long lastAdvance;
-    private bool loading, quitAfterImport, quitting, previewing;
-    private CancellationTokenSource? importCancellation;
+    private bool loading, quitRequested, quitting, previewing;
+    private CancellationTokenSource? importCancellation, playbackLoad;
     private Sound? Selected => Sounds.SelectedItem as Sound;
     internal bool CanStopPlayback => active != null || loading;
 
@@ -80,7 +80,10 @@ public partial class MainWindow : Window
     public void HidePalette() { ClosePanel(); Hide(); }
     public void Quit()
     {
-        if (importCancellation != null) { quitAfterImport = true; CancelImport(); return; }
+        quitRequested = true;
+        playbackLoad?.Cancel();
+        if (importCancellation != null) CancelImport();
+        if (pendingLoads != 0 || importCancellation != null) return;
         quitting = true;
         Close();
     }
@@ -175,14 +178,18 @@ public partial class MainWindow : Window
 
     private async Task Play(Sound sound, bool preview)
     {
+        if (quitRequested) return;
         int request = ++generation;
+        ++pendingLoads;
+        playbackLoad?.Cancel();
+        using var load = new CancellationTokenSource();
+        playbackLoad = load;
         loading = true;
         RefreshPlaybackText();
         try
         {
-            var path = library.FileFor(sound);
-            Wave wave = await Task.Run(() => Wave.Read(path));
-            if (request != generation || quitting) return;
+            Wave wave = await library.ReadForPlaybackAsync(sound, load.Token);
+            if (request != generation || quitRequested) return;
             engine.Play(wave, library.State.Routing, preview);
             active = sound; activeFrames = wave.Frames; previewing = preview;
             PlayingPad = new(sound.Id, preview ? "Previewing" : "On mic");
@@ -191,11 +198,18 @@ public partial class MainWindow : Window
             transport.Start();
             RefreshPlaybackText();
         }
+        catch (OperationCanceledException) when (load.IsCancellationRequested) { }
         catch (Exception ex) when (UserFacingError(ex))
         {
             if (request == generation) { Stop(); RefreshRoute(); Report(ex.Message); }
         }
-        finally { if (request == generation) { loading = false; RefreshPlaybackText(); } }
+        finally
+        {
+            if (playbackLoad == load) playbackLoad = null;
+            --pendingLoads;
+            if (request == generation) { loading = false; RefreshPlaybackText(); }
+            if (quitRequested) Quit();
+        }
     }
 
     private void Tick()
@@ -215,7 +229,7 @@ public partial class MainWindow : Window
         engine.Stop(); transport.Stop(); active = null; PlayingPad = null;
         ProgressLine.Visibility = Visibility.Collapsed; RefreshPlaybackText();
     }
-    private void Stop() { ++generation; loading = false; EndPlayback(); }
+    private void Stop() { ++generation; playbackLoad?.Cancel(); loading = false; EndPlayback(); }
     private void RefreshPlaybackText()
     {
         bool same = active != null && active.Id == Selected?.Id;
@@ -261,7 +275,7 @@ public partial class MainWindow : Window
     }
     private void ChooseFiles()
     {
-        if (importCancellation != null) return;
+        if (importCancellation != null || quitRequested) return;
         ClosePanel();
         var dialog = new Microsoft.Win32.OpenFileDialog { Title = "Import sounds", Multiselect = true,
             Filter = $"Audio and video files|{string.Join(';', Library.Extensions.Select(x => "*" + x))}|All files|*.*" };
@@ -299,7 +313,7 @@ public partial class MainWindow : Window
 
     private async Task Import(string[] paths)
     {
-        if (importCancellation != null) return;
+        if (importCancellation != null || quitRequested) return;
         using var cancel = new CancellationTokenSource();
         importCancellation = cancel;
         var token = cancel.Token;
@@ -326,7 +340,7 @@ public partial class MainWindow : Window
                     {
                         if (!Library.Supports(source)) throw new InvalidDataException("Choose a supported audio or video file.");
                         ImportLabel.Text = total == 1 ? "Importing…" : $"Importing {i + 1} of {total}";
-                        int ms = await ClipImporter.DecodeAsync(source, temp, token);
+                        int ms = await ClipImporter.ImportAsync(source, temp, token);
                         string name = Path.GetFileNameWithoutExtension(source).Trim();
                         pending.Add(new(id, name.Length == 0 ? "Untitled sound" : name, ms, id.ToByteArray()[0] % 6, Path.GetExtension(source)[1..].ToUpperInvariant()));
                         ready = true;
@@ -342,7 +356,7 @@ public partial class MainWindow : Window
                 library.CommitImports(pending);
                 AllTab.IsChecked = true; Search.Clear(); Rebuild(pending[0].Id);
             }
-            if (quitAfterImport) return;
+            if (quitRequested) return;
             var message = pending.Count == 1 ? "Imported 1 sound." : $"Imported {pending.Count} sounds.";
             if (cancel.IsCancellationRequested) Report(pending.Count == 0 ? "Import cancelled." : $"Import cancelled. {message}");
             else if (skipped > 0) Report(pending.Count == 0 && skipped == 1 ? firstError! : $"{message} {skipped} skipped. {firstError}");
@@ -356,7 +370,7 @@ public partial class MainWindow : Window
             ImportIcon.Text = "\uE710"; ImportButton.IsEnabled = true; ImportLabel.Text = "Import";
             ImportButton.ToolTip = "Import sounds (Ctrl+O)";
             System.Windows.Automation.AutomationProperties.SetName(ImportButton, "Import sounds");
-            if (quitAfterImport) Quit();
+            if (quitRequested) Quit();
         }
     }
 

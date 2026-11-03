@@ -139,10 +139,19 @@ def levels(samples):
     return float(stats["input_i"]), float(stats["input_tp"])
 
 
-async def check(pack, noise_model, speech_model=None):
-    names = ("Air horn", "Quick applause", "Coin drop", "Glass ping", "Power down", "Signal check")
+async def check(pack, noise_model, speech_model=None, import_proof=None):
+    names = ["Air horn", "Quick applause", "Coin drop", "Glass ping", "Power down", "Signal check"]
     paths = [pack / "Assets" / "Sounds" / f"{i:08x}{'0' * 24}.wav" for i in range(1, 7)]
+    if import_proof:
+        paths.append(import_proof / "quiet-import.wav")
+        names.append("Quiet import")
     pads = render(pack, paths)
+    if import_proof:
+        original = render(pack, [import_proof / "quiet-source.wav"])[0]
+        before, after = levels(original)[0], levels(pads[-1])[0]
+        print(f"Quiet import at 70%: {before:.1f} to {after:.1f} LUFS", flush=True)
+        assert before <= -38 and after - before > 20 and abs(after - levels(pads[5])[0]) < 2
+        assert len(original) == len(pads[-1]) and np.corrcoef(original, pads[-1])[0, 1] > 0.95
     for name, pad in zip(names, pads):
         loudness, peak = levels(pad)
         print(f"B1 at 70%      {name:15} {loudness:.1f} LUFS   {peak:.1f} dBTP", flush=True)
@@ -170,13 +179,17 @@ async def check(pack, noise_model, speech_model=None):
             assert (-10 if filtered else -6) < gain < 3 and match > (0.45 if filtered else 0.55), f"Missing or distorted {name}"
             if mode == "Open mic":
                 assert levels(audio)[1] <= -1, f"Opus left too little peak headroom for {name}"
-            if speech_model and name == "Signal check" and mode != "Open mic":
+            if name == "Quiet import":
+                received_loudness, received_peak = levels(audio)
+                print(f"Received quiet import: {received_loudness:.1f} LUFS, {received_peak:.1f} dBTP", flush=True)
+                assert -24 <= received_loudness <= -17 and received_peak <= -1
+            if speech_model and name in ("Signal check", "Quiet import") and mode != "Open mic":
                 from vosk import KaldiRecognizer, Model, SetLogLevel
                 SetLogLevel(-1)
                 recognizer = KaldiRecognizer(Model(str(speech_model)), RATE)
                 recognizer.AcceptWaveform(np.rint(audio * 32767).clip(-32768, 32767).astype("<i2").tobytes())
                 words = json.loads(recognizer.FinalResult())["text"]
-                print("Received Signal check:", words)
+                print(f"Received {name}:", words)
                 assert words == "one two three"
             pos += len(pad) + len(gap)
 
@@ -186,6 +199,7 @@ if __name__ == "__main__":
     parser.add_argument("package", type=Path, help="extracted Windows application folder")
     parser.add_argument("--speech-model", type=Path, help="optional local English Vosk model")
     parser.add_argument("--noise-model", type=Path, help="use a local copy of the pinned cb.rnnn model")
+    parser.add_argument("--import-proof", type=Path, help="quiet source and library copy from the import check")
     args = parser.parse_args()
     with tempfile.TemporaryDirectory() as tmp:
         model_path = args.noise_model or Path(tmp) / "cb.rnnn"
@@ -194,4 +208,4 @@ if __name__ == "__main__":
                 model_path.write_bytes(response.read(512 * 1024))
         if hashlib.sha256(model_path.read_bytes()).hexdigest() != MODEL_SHA:
             raise ValueError("Unexpected noise suppression model")
-        asyncio.run(check(args.package.resolve(), model_path, args.speech_model))
+        asyncio.run(check(args.package.resolve(), model_path, args.speech_model, args.import_proof))

@@ -45,6 +45,8 @@ When editing a search, Left and Right move the caret. Up or Down moves focus int
 
 Drag several files or a folder onto the board, or use **Import**. A folder imports supported files directly inside it. Click the progress control to cancel a batch and keep the completed pads. Imports run in local decoder processes that close on cancellation. Playback reads the decoded copy. Each source can be up to 256 MiB with up to five minutes of audio.
 
+Soundboard automatically raises quiet clips and turns loud clips down to match the starter pads. It measures the mono mix a voice call receives and keeps the stereo recording for playback. Preview and **Play to mic** use the same leveled copy. **Out B1 → Clip volume** adjusts the whole board. Your source files stay untouched. Clips imported with an older version are leveled the first time you play them.
+
 | Source | Examples |
 | --- | --- |
 | Music and voice notes | MP3, MP2, AAC, M4A/M4B/M4R, Ogg Vorbis, Opus, WMA, AMR |

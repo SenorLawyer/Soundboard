@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Soundboard;
 
@@ -28,6 +30,7 @@ public sealed class Library
     private readonly string root;
     private readonly string assets;
     private readonly string index;
+    private readonly object clipFiles = new();
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = true, IgnoreReadOnlyProperties = true };
     public Catalog State { get; private set; }
     public string ClipsDirectory => Path.Combine(root, "Clips");
@@ -55,7 +58,7 @@ public sealed class Library
         {
             var sound = catalog.Sounds[i];
             if (StarterDurations.TryGetValue(sound.Id, out int duration) && sound.DurationMs != duration &&
-                !File.Exists(Path.Combine(ClipsDirectory, sound.Id.ToString("N") + ".wav")))
+                !File.Exists(LocalFile(sound.Id)) && !File.Exists(LeveledFile(sound.Id)))
                 catalog.Sounds[i] = sound with { DurationMs = duration };
         }
         return catalog;
@@ -74,11 +77,54 @@ public sealed class Library
     private static Sound Starter(int n, string name, int ms, int icon, bool favorite = false) =>
         new(new Guid(n, 0, 0, new byte[8]), name, ms, icon, "WAV", favorite);
 
+    private string LocalFile(Guid id) => Path.Combine(ClipsDirectory, id.ToString("N") + ".wav");
+    private string LeveledFile(Guid id) => Path.Combine(ClipsDirectory, id.ToString("N") + ".leveled.wav");
+
     public string FileFor(Sound sound)
     {
-        var name = sound.Id.ToString("N") + ".wav";
-        var path = Path.Combine(ClipsDirectory, name);
-        return File.Exists(path) ? path : Path.Combine(assets, name);
+        string leveled = LeveledFile(sound.Id);
+        if (File.Exists(leveled)) return leveled;
+        string legacy = LocalFile(sound.Id);
+        return File.Exists(legacy) ? legacy : Path.Combine(assets, Path.GetFileName(legacy));
+    }
+
+    internal async Task<Wave> ReadForPlaybackAsync(Sound sound, CancellationToken token)
+    {
+        string path = FileFor(sound);
+        if (path == LocalFile(sound.Id))
+        {
+            // Older libraries only have the decoded original. Publish its leveled copy once.
+            string leveled = LeveledFile(sound.Id);
+            string workId = Guid.NewGuid().ToString("N");
+            string snapshot = Path.Combine(Path.GetTempPath(), "Soundboard-" + workId + ".wav");
+            string temp = leveled + "." + workId + ".part";
+            bool cache = true;
+            try
+            {
+                try { using var reserved = new FileStream(temp, FileMode.CreateNew, FileAccess.Write); }
+                catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+                {
+                    // Read-only libraries can play the result from temporary storage.
+                    temp = snapshot + ".part"; cache = false;
+                }
+                // The helper can keep its input open. A private snapshot lets the user remove
+                // the pad immediately even while an old recording is being measured.
+                using (var input = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete, 65536, true))
+                using (var copy = new FileStream(snapshot, FileMode.CreateNew, FileAccess.Write, FileShare.None, 65536, true))
+                    await input.CopyToAsync(copy, token).ConfigureAwait(false);
+                await ClipImporter.LevelAsync(snapshot, temp, token).ConfigureAwait(false);
+                if (!cache) return await Task.Run(() => Wave.Read(temp), token).ConfigureAwait(false);
+                lock (clipFiles)
+                {
+                    token.ThrowIfCancellationRequested();
+                    if (!File.Exists(path)) throw new FileNotFoundException("This sound was removed.");
+                    if (!File.Exists(leveled)) File.Move(temp, leveled);
+                }
+            }
+            finally { File.Delete(temp); File.Delete(snapshot); }
+            path = leveled;
+        }
+        return await Task.Run(() => Wave.Read(path), token).ConfigureAwait(false);
     }
 
     private void Save(Catalog next)
@@ -94,7 +140,7 @@ public sealed class Library
     }
 
     public void Add(Sound sound) => Save(State with { Sounds = [.. State.Sounds, sound] });
-    internal string StagingFile(Guid id) => Path.Combine(ClipsDirectory, id.ToString("N") + ".wav.part");
+    internal string StagingFile(Guid id) => LeveledFile(id) + ".part";
 
     internal void CommitImports(IReadOnlyList<Sound> sounds)
     {
@@ -122,7 +168,11 @@ public sealed class Library
     public void Remove(Sound sound)
     {
         Save(State with { Sounds = State.Sounds.Where(s => s.Id != sound.Id).ToList() });
-        File.Delete(Path.Combine(ClipsDirectory, sound.Id.ToString("N") + ".wav"));
+        lock (clipFiles)
+        {
+            File.Delete(LocalFile(sound.Id));
+            File.Delete(LeveledFile(sound.Id));
+        }
     }
 
     public static bool Matches(string value, string query)
