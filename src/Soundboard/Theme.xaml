@@ -3,6 +3,7 @@
     <SolidColorBrush x:Key="Secondary" Color="#B2AFB6"/>
     <SolidColorBrush x:Key="Muted" Color="#99969F"/>
     <SolidColorBrush x:Key="Hairline" Color="#26FFFFFF"/>
+    <Geometry x:Key="Headphones">M2,10 V8 A6,6 0 0 1 14,8 V10 M2,9 H4 V13 H2 Z M12,9 H14 V13 H12 Z</Geometry>
     <Style TargetType="TextBlock"><Setter Property="VerticalAlignment" Value="Center"/></Style>
     <Style TargetType="Button">
       <Setter Property="Foreground" Value="{StaticResource Secondary}"/><Setter Property="Cursor" Value="Hand"/>
@@ -22,6 +23,24 @@
       <Setter Property="CaretBrush" Value="#E5E1E7"/><Setter Property="SelectionBrush" Value="#657E85B1"/>
       <Setter Property="BorderThickness" Value="0"/><Setter Property="Padding" Value="0"/><Setter Property="VerticalContentAlignment" Value="Center"/>
       <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="TextBox"><Border Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}"><ScrollViewer x:Name="PART_ContentHost" Focusable="False"/></Border></ControlTemplate></Setter.Value></Setter>
+    </Style>
+    <Style x:Key="PadSurface" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+      <Setter Property="Focusable" Value="False"/><Setter Property="Padding" Value="0"/>
+      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button"><Border x:Name="Pad" Background="Transparent" CornerRadius="7"><ContentPresenter/></Border><ControlTemplate.Triggers><Trigger Property="IsPressed" Value="True"><Setter TargetName="Pad" Property="Background" Value="#13FFFFFF"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter>
+    </Style>
+    <Style x:Key="TileTool" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+      <Setter Property="Focusable" Value="False"/><Setter Property="Width" Value="25"/><Setter Property="Height" Value="24"/><Setter Property="Padding" Value="4"/>
+    </Style>
+    <Style x:Key="LibraryTab" TargetType="RadioButton">
+      <Setter Property="Cursor" Value="Hand"/><Setter Property="Foreground" Value="{StaticResource Muted}"/><Setter Property="FontSize" Value="12"/><Setter Property="VerticalAlignment" Value="Center"/>
+      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="RadioButton">
+        <Border x:Name="Tab" Background="Transparent" BorderBrush="Transparent" BorderThickness="1" CornerRadius="5" Padding="8,4"><ContentPresenter/></Border>
+        <ControlTemplate.Triggers>
+          <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Tab" Property="Background" Value="#10FFFFFF"/></Trigger>
+          <Trigger Property="IsChecked" Value="True"><Setter TargetName="Tab" Property="Background" Value="#1CFFFFFF"/><Setter Property="Foreground" Value="{StaticResource Primary}"/></Trigger>
+          <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Tab" Property="BorderBrush" Value="#77FFFFFF"/></Trigger>
+        </ControlTemplate.Triggers>
+      </ControlTemplate></Setter.Value></Setter>
     </Style>
     <Style x:Key="PaletteScroll" TargetType="ScrollBar">
       <Setter Property="Width" Value="4"/><Setter Property="MinWidth" Value="0"/><Setter Property="MaxWidth" Value="4"/><Setter Property="MinHeight" Value="0"/><Setter Property="ClipToBounds" Value="True"/>

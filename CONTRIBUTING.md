@@ -4,13 +4,13 @@ Open an issue for a change to routing or keyboard behavior before writing a larg
 
 ## Build and test
 
-Use Windows x64, the .NET 10 SDK, and Visual Studio 2022 or later with **Desktop development with C++** and a Windows SDK. From PowerShell at the repository root, run:
+Use Windows x64, PowerShell 7.3 or later, the .NET 10 SDK, and Visual Studio 2022 or later with **Desktop development with C++** and a Windows SDK. Run this from the repository root.
 
 ```powershell
 ./scripts/build.ps1
 ```
 
-This compiles the native mixer with warnings treated as errors, checks each of Potato's 64 output channels, builds the app, and runs the library and Windows decoder tests. Add `-Package` to produce the self-contained Windows archive. The tests use a temporary library. They run without Potato.
+The first build downloads hash-pinned FFmpeg source and a portable GCC toolchain. It builds the local import helper once and reuses it while its recipe is unchanged. The Windows checks exercise all 64 mixer channels, actual media decoding, OLE file drops and keyboard navigation. The synthetic media in `tests/Checks/Media` was generated from a sine tone and a solid-color video frame. Add `-Package` to produce the self-contained Windows archive, corresponding FFmpeg source archive and checksums. The tests use a temporary library and run without Potato.
 
 ## Audio changes
 

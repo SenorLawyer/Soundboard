@@ -6,6 +6,7 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
+using System.Windows.Input;
 using System.Windows.Threading;
 using Soundboard;
 using ComData = System.Runtime.InteropServices.ComTypes.IDataObject;
@@ -42,7 +43,8 @@ internal static class DropCheck
             var unnamed = Path.Combine(root, ".wav");
             File.Copy(library.FileFor(library.State.Sounds[0]), source);
             File.Copy(source, unnamed);
-            data.SetData(DataFormats.FileDrop, new[] { source, unnamed });
+            var webm = Path.Combine(AppContext.BaseDirectory, "Media", "clip.webm");
+            data.SetData(DataFormats.FileDrop, new[] { source, unnamed, webm });
             var transfer = Marshal.GetComInterfaceForObject(data, typeof(ComData));
             try
             {
@@ -56,7 +58,7 @@ internal static class DropCheck
             }
             finally { Marshal.Release(transfer); Marshal.Release(target); }
             var clock = Stopwatch.StartNew();
-            while (library.State.Sounds.Count < 8 && clock.Elapsed < TimeSpan.FromSeconds(10))
+            while (library.State.Sounds.Count < 9 && clock.Elapsed < TimeSpan.FromSeconds(12))
             {
                 var frame = new DispatcherFrame();
                 Dispatcher.CurrentDispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, () => frame.Continue = false);
@@ -66,13 +68,71 @@ internal static class DropCheck
             var added = library.State.Sounds.Single(s => s.Name == "Drop check");
             var restored = new Library(root, Path.Combine(AppContext.BaseDirectory, "Assets", "Sounds"));
             if (!restored.State.Sounds.Any(s => s.Name == "Untitled sound")) throw new Exception("A nameless file needs a usable library name.");
+            if (!restored.State.Sounds.Any(s => s.Name == "clip" && s.Format == "WEBM")) throw new Exception("Dropping a video must import its audio track.");
             var search = (TextBox)window.FindName("Search");
             search.Text = "dck";
             var list = (ListBox)window.FindName("Sounds");
             if (list.Items.Count != 1 || !Equals(list.SelectedItem, added)) throw new Exception("Imported clip was not searchable and selected.");
             if (!File.Exists(source) || Wave.Read(library.FileFor(added)).Frames == 0) throw new Exception("The dropped clip did not import.");
-            Console.WriteLine("Desktop passed: OLE drop, real decoder, persistent copy, fuzzy search and selection.");
+            CheckPalette(window, library, added);
+            Console.WriteLine("Desktop passed: OLE import, search recovery, menu navigation and safe cancellation.");
         }
         finally { window.Quit(); Directory.Delete(root, true); }
+    }
+
+    private static void CheckPalette(MainWindow window, Library library, Sound added)
+    {
+        T Find<T>(string name) where T : FrameworkElement => (T)window.FindName(name);
+        void Click(string name) => Find<Button>(name).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        bool KeyFrom(UIElement source, Key key)
+        {
+            var input = new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(window)!, 0, key) { RoutedEvent = Keyboard.PreviewKeyDownEvent };
+            source.RaiseEvent(input);
+            return input.Handled;
+        }
+
+        var search = Find<TextBox>("Search");
+        search.Text = "no-such-sound";
+        Click("EmptyAction");
+        if (search.Text != "" || Find<ListBox>("Sounds").Items.Count == 0) throw new Exception("Clear search must restore the library.");
+        var pads = Find<ListBox>("Sounds");
+        window.UpdateLayout();
+        Point Position(int index) => ((ListBoxItem)pads.ItemContainerGenerator.ContainerFromIndex(index)).TranslatePoint(new Point(), window);
+        if (Position(0).Y != Position(1).Y || Position(1).X <= Position(0).X || Position(3).Y <= Position(0).Y)
+            throw new Exception("Sound pads must form a three-column grid.");
+        pads.SelectedIndex = 0;
+        KeyFrom(pads, Key.Down); KeyFrom(pads, Key.Right);
+        if (pads.SelectedIndex != 4) throw new Exception("Arrow keys must move between rows and columns.");
+
+        Click("RoutingButton");
+        KeyFrom(Find<TextBox>("MenuSearch"), Key.Escape);
+        if (Find<Border>("MenuPanel").Visibility != Visibility.Collapsed) throw new Exception("Esc from the footer route should return to the library.");
+        Click("ActionsButton");
+        var filter = Find<TextBox>("MenuSearch");
+        filter.Text = "no-such-action";
+        if (Find<TextBlock>("NoCommands").Visibility != Visibility.Visible) throw new Exception("A missing action needs a recovery state.");
+        Click("ClearMenuFilter");
+        filter.Text = "audio routing";
+        KeyFrom(filter, Key.Enter);
+        Click("MenuBack");
+        if (Find<TextBlock>("MenuHint").Text != "Search actions...") throw new Exception("Back must return to the menu that opened routing.");
+        window.FocusSearch();
+
+        search.Text = added.Name;
+        search.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
+        Find<ListBox>("Sounds").Focus();
+        KeyFrom(Find<ListBox>("Sounds"), Key.Delete);
+        var cancel = Find<Button>("CancelButton");
+        if (Find<Border>("EditPanel").Visibility != Visibility.Visible || KeyFrom(cancel, Key.Enter))
+            throw new Exception("Enter on Cancel must reach the Cancel button.");
+        Click("CancelButton");
+        if (!library.State.Sounds.Any(s => s.Id == added.Id)) throw new Exception("Cancelling remove must preserve the clip.");
+
+        // Populate this disposable library in memory to test scrolling without copying thousands of audio files.
+        library.State.Sounds.AddRange(Enumerable.Range(1, 4096).Select(i => added with { Id = Guid.NewGuid(), Name = $"Large library pad {i}" }));
+        search.Clear(); window.UpdateLayout();
+        int realized = Enumerable.Range(0, pads.Items.Count).Count(i => pads.ItemContainerGenerator.ContainerFromIndex(i) != null);
+        if (pads.Items.Count < 4096 || realized is 0 or > 100) throw new Exception($"A large library realized {realized} pad controls.");
+        Console.WriteLine($"Grid rendered {realized} pad controls for {pads.Items.Count} clips.");
     }
 }

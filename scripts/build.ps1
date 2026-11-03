@@ -3,6 +3,7 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot
 Push-Location $root
 try {
+    & "$PSScriptRoot/codecs.ps1"
     & "$PSScriptRoot/native.ps1" -Configuration Release
     dotnet build src/Soundboard -c Release --nologo
     if ($LASTEXITCODE -ne 0) { throw 'Windows application build failed.' }
@@ -16,6 +17,9 @@ try {
         dotnet publish src/Soundboard -c Release -r win-x64 --self-contained true -o $stage --nologo
         if ($LASTEXITCODE -ne 0) { throw 'Portable publish failed.' }
         Copy-Item -LiteralPath 'LICENSE','README.md','THIRD-PARTY.md','licenses','docs' -Destination $stage -Recurse
+        Copy-Item -LiteralPath 'artifacts/codecs/FFmpeg-LGPL-2.1.txt','scripts/ffmpeg.sh','scripts/codecs.ps1' -Destination "$stage/licenses"
+        $source = Get-Item -LiteralPath 'artifacts/codecs/ffmpeg-9.0.2.tar.xz'
+        Copy-Item -LiteralPath $source.FullName -Destination "$root/artifacts" -Force
         $packs = dotnet msbuild src/Soundboard/Soundboard.csproj -t:ResolveFrameworkReferences -getItem:ResolvedRuntimePack -p:SelfContained=true -p:Configuration=Release
         if ($LASTEXITCODE -ne 0) { throw 'Could not locate runtime notices.' }
         foreach ($pack in ($packs | Out-String | ConvertFrom-Json).Items.ResolvedRuntimePack) {
@@ -28,7 +32,8 @@ try {
         $zip = Join-Path $root 'artifacts/Soundboard-win-x64.zip'
         Compress-Archive -Path "$stage/*" -DestinationPath $zip -Force
         $hash = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
-        "$hash  Soundboard-win-x64.zip" | Set-Content -LiteralPath "$root/artifacts/SHA256SUMS.txt" -Encoding ascii
+        $sourceHash = (Get-FileHash -LiteralPath $source.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+        @("$hash  Soundboard-win-x64.zip", "$sourceHash  $($source.Name)") | Set-Content -LiteralPath "$root/artifacts/SHA256SUMS.txt" -Encoding ascii
         Write-Host "Portable executable: $stage/Soundboard.exe"
         Write-Host "Archive: $zip ($hash)"
     }

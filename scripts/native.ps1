@@ -12,7 +12,7 @@ $opts = @('/nologo','/std:c++20','/EHsc','/utf-8','/W4','/WX','/MT','/D_CRT_SECU
 if ($Configuration -eq 'Release') { $opts += '/O2' } else { $opts += '/Od' }
 Push-Location $out
 try {
-    & cl @opts /LD "$root/native/mixer.cpp" "$root/native/decode.cpp" '/Fe:Soundboard.Audio.dll' /link '/IMPLIB:Soundboard.Audio.lib' '/DYNAMICBASE' '/NXCOMPAT' 'mfplat.lib' 'mfreadwrite.lib' 'mfuuid.lib' 'ole32.lib'
+    & cl @opts /LD "$root/native/mixer.cpp" "$root/native/decode.cpp" '/Fe:Soundboard.Audio.dll' /link '/IMPLIB:Soundboard.Audio.lib' '/DYNAMICBASE' '/NXCOMPAT' '/DELAYLOAD:mfplat.dll' '/DELAYLOAD:mfreadwrite.dll' 'delayimp.lib' 'mfplat.lib' 'mfreadwrite.lib' 'mfuuid.lib' 'ole32.lib'
     if ($LASTEXITCODE -ne 0) { throw 'Native audio build failed.' }
     & cl @opts "$root/tests/mixer.cpp" '/Fe:mixer-tests.exe' 'Soundboard.Audio.lib'
     if ($LASTEXITCODE -ne 0) { throw 'Mixer test build failed.' }

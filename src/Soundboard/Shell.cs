@@ -6,6 +6,7 @@ using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
 using Forms = System.Windows.Forms;
+using Color = System.Drawing.Color;
 
 namespace Soundboard;
 
@@ -47,17 +48,35 @@ internal sealed class Shell : IDisposable
         using var stream = Application.GetResourceStream(new Uri("pack://application:,,,/Soundboard;component/Assets/soundboard.ico")).Stream;
         using var original = new Icon(stream);
         icon = (Icon)original.Clone();
-        menu = new Forms.ContextMenuStrip();
+        menu = new Forms.ContextMenuStrip { ShowImageMargin = false };
+        if (!Forms.SystemInformation.HighContrast)
+        {
+            var colors = new TrayColors();
+            menu.BackColor = colors.ToolStripDropDownBackground;
+            menu.ForeColor = Color.FromArgb(241, 239, 242);
+            menu.Renderer = new Forms.ToolStripProfessionalRenderer(colors) { RoundedEdges = false };
+        }
         LauncherShortcut = BindLauncher(modifiers => Bind(1, 0x20, modifiers));
         var open = (Forms.ToolStripMenuItem)menu.Items.Add("Open Soundboard", null, (_, _) => Show());
         open.ShortcutKeyDisplayString = LauncherShortcut ?? "";
-        menu.Items.Add("Stop sound", null, (_, _) => shortcut(2));
+        var stopItem = menu.Items.Add("Stop sound", null, (_, _) => shortcut(2));
+        menu.Opening += (_, _) => stopItem.Enabled = window.CanStopPlayback;
         menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add("Quit Soundboard", null, (_, _) => window.Quit());
         tray = new Forms.NotifyIcon { Text = LauncherShortcut == null ? "Soundboard" : $"Soundboard ({LauncherShortcut})", Icon = icon, ContextMenuStrip = menu, Visible = true };
         tray.MouseClick += (_, e) => { if (e.Button == Forms.MouseButtons.Left) Show(); };
         if (LauncherShortcut == null) Unavailable.Add("Ctrl+Alt+Space and Ctrl+Shift+Space");
         if (!Bind(2, 0x08)) Unavailable.Add("Ctrl+Alt+Backspace");
+    }
+
+    private sealed class TrayColors : Forms.ProfessionalColorTable
+    {
+        public override Color ToolStripDropDownBackground => Color.FromArgb(47, 46, 51);
+        public override Color MenuBorder => Color.FromArgb(85, 83, 91);
+        public override Color MenuItemSelected => Color.FromArgb(69, 67, 74);
+        public override Color MenuItemBorder => MenuItemSelected;
+        public override Color SeparatorDark => Color.FromArgb(78, 76, 82);
+        public override Color SeparatorLight => ToolStripDropDownBackground;
     }
 
     public static void SignalExisting()

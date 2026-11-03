@@ -14,9 +14,25 @@ public partial class MainWindow
     private string panel = "";
     private string edit = "";
     private Sound? editing;
+    private bool routingFromActions;
+
+    private string? ParentPage => panel switch
+    {
+        "Preview output" or "Clip volume" => "Audio routing",
+        "Global shortcut" => "Actions",
+        "Audio routing" when routingFromActions => "Actions",
+        _ => null
+    };
+    private void OpenRouting(bool fromActions)
+    {
+        routingFromActions = fromActions; ShowMenu("Audio routing");
+    }
+    private void BackClick(object sender, RoutedEventArgs e) => Back();
+    private void Back() { if (ParentPage is { } parent) ShowMenu(parent); else FocusSearch(); }
 
     private void ClosePanel()
     {
+        DismissNotice();
         panel = ""; edit = ""; editing = null;
         DismissLayer.Visibility = MenuPanel.Visibility = EditPanel.Visibility = Visibility.Collapsed;
     }
@@ -36,15 +52,15 @@ public partial class MainWindow
                 if (sound != null)
                 {
                     Add("Play to microphone", "\uE768", "Enter", () => _ = Play(sound, false));
-                    Add("Preview on speakers", "\uE7F5", "Ctrl P", () => _ = Play(sound, true));
+                    Add("Preview privately", "\uE7F5", "Ctrl P", Preview);
                     Add(sound.Favorite ? "Remove from favorites" : "Add to favorites", "\uE734", "Ctrl D", () => Favorite(sound));
                     Add("Assign global shortcut", "\uE765", "", () => ShowMenu("Global shortcut"));
                     Add("Rename sound", "\uE8AC", "F2", () => BeginEdit(sound, "Rename"));
                     Add("Remove sound", "\uE74D", "Delete", () => BeginEdit(sound, "Remove"));
                 }
-                if (active != null || loading) Add("Stop playback", "\uE71A", "Ctrl Alt ⌫", Stop);
+                if (CanStopPlayback) Add("Stop playback", "\uE71A", "Ctrl Alt ⌫", Stop);
                 Add("Import sounds…", "\uE710", "Ctrl O", ChooseFiles);
-                Add("Audio routing", "\uE9E9", "", () => ShowMenu("Audio routing"));
+                Add("Audio routing", "\uE9E9", "", () => OpenRouting(true));
                 Add("Hide Soundboard", "\uE738", shell?.LauncherShortcut ?? "Esc", HidePalette);
                 Add("Quit Soundboard", "\uE7E8", "", Quit);
                 break;
@@ -87,6 +103,8 @@ public partial class MainWindow
                 break;
         }
         MenuHint.Text = page == "Actions" ? "Search actions..." : "Filter options...";
+        MenuBack.Visibility = ParentPage == null ? Visibility.Collapsed : Visibility.Visible;
+        Grid.SetRowSpan(DismissLayer, 2);
         MenuSearch.Clear(); FilterCommands();
         DismissLayer.Visibility = MenuPanel.Visibility = Visibility.Visible;
         MenuPanel.UpdateLayout(); MenuSearch.Focus(); Keyboard.Focus(MenuSearch);
@@ -114,9 +132,15 @@ public partial class MainWindow
     {
         var filter = MenuSearch.Text.Trim();
         MenuHint.Visibility = filter.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+        ClearMenuFilter.Visibility = filter.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
         Commands.ItemsSource = choices.Where(c => Library.Matches(c.Title, filter)).ToList();
-        Commands.SelectedIndex = Commands.Items.Count > 0 ? 0 : -1;
+        NoCommands.Text = panel == "Actions" ? "No matching actions" : "No matching options";
+        NoCommands.Visibility = Commands.Items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        Commands.SelectedItem = filter.Length == 0 ? choices.FirstOrDefault(c => c.Keys == "✓") : null;
+        if (Commands.SelectedIndex < 0 && Commands.Items.Count > 0) Commands.SelectedIndex = 0;
+        if (Commands.SelectedItem != null) Commands.ScrollIntoView(Commands.SelectedItem);
     }
+    private void ClearMenuClick(object sender, RoutedEventArgs e) { MenuSearch.Clear(); MenuSearch.Focus(); }
     private void MenuSearchChanged(object sender, TextChangedEventArgs e) { if (Commands != null) FilterCommands(); }
     private void ExecuteCommand()
     {
@@ -133,11 +157,13 @@ public partial class MainWindow
         ClosePanel(); edit = action; editing = sound;
         bool rename = action == "Rename";
         EditTitle.Text = rename ? "Rename sound" : "Remove sound?";
-        EditHint.Text = rename ? "Choose a name you can find quickly." : $"Remove “{sound.Name}” from your library? Your original file stays where it is.";
+        EditHint.Text = rename ? "Sound name" : $"Remove “{sound.Name}” from your library? Your original file stays on disk.";
         EditText.Text = sound.Name; ConfirmEdit.Content = rename ? "Save name" : "Remove";
         EditInputBorder.Visibility = rename ? Visibility.Visible : Visibility.Collapsed;
+        Grid.SetRowSpan(DismissLayer, 3);
         DismissLayer.Visibility = EditPanel.Visibility = Visibility.Visible;
-        if (rename) { EditText.Focus(); EditText.SelectAll(); } else ConfirmEdit.Focus();
+        EditPanel.UpdateLayout();
+        if (rename) { EditText.Focus(); EditText.SelectAll(); } else CancelButton.Focus();
     }
     private void CancelEdit(object sender, RoutedEventArgs e) => FocusSearch();
     private void CommitEdit(object sender, RoutedEventArgs e) => FinishEdit();
@@ -151,6 +177,7 @@ public partial class MainWindow
                 var name = EditText.Text.Trim();
                 if (name.Length == 0) { EditHint.Text = "Enter a sound name."; return; }
                 library.Replace(sound with { Name = name });
+                if (!Library.Matches(name, Search.Text.Trim())) Search.Clear();
             }
             else
             {
@@ -174,26 +201,33 @@ public partial class MainWindow
         bool ctrl = Keyboard.Modifiers == ModifierKeys.Control;
         if (key == Key.Escape)
         {
-            if (edit != "" || panel == "Actions") FocusSearch();
-            else if (panel != "") ShowMenu(panel is "Clip volume" or "Preview output" ? "Audio routing" : "Actions");
+            if (edit != "") FocusSearch();
+            else if (panel != "") Back();
             else if (active != null || loading) Stop();
             else if (Search.Text.Length != 0) Search.Clear();
             else HidePalette();
         }
-        else if (edit != "") { if (key == Key.Enter) FinishEdit(); else return; }
+        else if (edit != "") { if (key == Key.Enter && EditText.IsKeyboardFocused) FinishEdit(); else return; }
         else if (ctrl && key == Key.K) ToggleActions();
         else if (panel != "")
         {
             if (key is Key.Up or Key.Down) Move(Commands, key == Key.Up ? -1 : 1);
-            else if (key == Key.Enter) ExecuteCommand();
+            else if (key == Key.Enter && Keyboard.FocusedElement is not Button) ExecuteCommand();
             else return;
         }
         else if (ctrl && key == Key.O) ChooseFiles();
-        else if (key is Key.Up or Key.Down) { Move(Sounds, key == Key.Up ? -1 : 1); Search.Focus(); }
+        else if (key is Key.Up or Key.Down || (key is Key.Left or Key.Right && (!Search.IsKeyboardFocused || Search.Text.Length == 0)))
+        {
+            Move(Sounds, key switch { Key.Up => -PadColumns, Key.Down => PadColumns, Key.Left => -1, _ => 1 });
+            if (Sounds.SelectedItem is { } selected && Sounds.ItemContainerGenerator.ContainerFromItem(selected) is ListBoxItem pad) pad.Focus();
+        }
+        else if (ctrl && key == Key.F) { FocusSearch(); Search.SelectAll(); }
+        else if (key == Key.Back && Sounds.IsKeyboardFocusWithin && Search.Text.Length > 0)
+        { Search.Focus(); Search.Text = Search.Text[..^1]; Search.CaretIndex = Search.Text.Length; }
         else if (key == Key.Enter && Keyboard.FocusedElement is not Button) Primary();
         else if (Selected is { } sound)
         {
-            if (ctrl && key == Key.P) _ = Play(sound, true);
+            if (ctrl && key == Key.P) Preview();
             else if (ctrl && key == Key.D) Guard(() => Favorite(sound));
             else if (key == Key.F2) BeginEdit(sound, "Rename");
             else if (key == Key.Delete && (Search.Text == "" || !Search.IsKeyboardFocusWithin)) BeginEdit(sound, "Remove");

@@ -1,14 +1,16 @@
 # Soundboard
 
-Drop in a clip, find it by name, and press Enter to play it through your microphone. Soundboard is a small Windows launcher for Voicemeeter Potato. It mixes clips directly into **Out B1**. Your microphone keeps working, and your music, desktop audio and game chat keep their existing strip assignments.
+Drop audio or video files onto the board. Each becomes a sound pad you can click to play through your microphone. Soundboard mixes clips directly into Voicemeeter Potato's **Out B1** alongside your mic. Your music and game chat keep their existing routes.
 
 ![Soundboard on Windows](docs/soundboard.png)
+
+Watch the [Windows walkthrough and screenshot gallery](https://github.com/SenorLawyer/Soundboard/pull/1#design-walkthrough).
 
 ## Get started
 
 1. Start [Voicemeeter Potato](https://vb-audio.com/Voicemeeter/potato.htm) on x64 Windows 10 or 11. In your call or game, select **Voicemeeter Out B1** as the microphone. Older driver versions call it **Voicemeeter Output**.
 2. Extract the entire `Soundboard-win-x64.zip` archive and open `Soundboard.exe`. Tagged builds appear under [Releases](https://github.com/SenorLawyer/Soundboard/releases). Each successful pull request build also has a downloadable Windows artifact.
-3. Double-click a starter sound, or drop one or more files onto the window. Press **Ctrl+P** to preview the selected clip privately. Click **Out B1** in the footer to choose your A1 or A2 preview device, set the clip volume, or hear a clip locally while sending it.
+3. Click a pad to send its sound to B1. Click its headphones to preview privately, or its star to add it to Favorites. Right-click for more actions. **Out B1** in the footer lets you choose your A1 or A2 preview device, set the clip volume, or hear a clip locally while sending it.
 
 Keep B1 enabled on the physical mic strip. Any strip you already send to B1 will still reach the call. Push-to-talk and voice filtering in the receiving app also apply to clips.
 
@@ -18,7 +20,8 @@ Keep B1 enabled on the physical mic strip. Any strip you already send to B1 will
 | --- | --- |
 | Show or hide the launcher from any app | Ctrl+Alt+Space, or Ctrl+Shift+Space if the first shortcut is in use |
 | Stop playback from any app | Ctrl+Alt+Backspace |
-| Find a clip and move through results | Type, then ↑ or ↓ |
+| Find a clip | Type to search, or Ctrl+F |
+| Move between pads | ↑ and ↓ change rows, ← and → change columns |
 | Play or stop the selected clip | Enter |
 | Preview on the selected hardware bus | Ctrl+P |
 | Open the searchable action panel | Ctrl+K |
@@ -28,9 +31,19 @@ Keep B1 enabled on the physical mic strip. Any strip you already send to B1 will
 
 Esc closes the current panel, stops playback, clears the search, or hides the window, in that order. The tray icon shows the active launcher shortcut and has Open and Quit commands. If both shortcuts are taken, use the tray icon to open Soundboard.
 
+When editing a search, Left and Right move the caret. Up or Down moves focus into the pad grid.
+
 ## Files and routing
 
-Soundboard decodes imports on a worker thread with Windows Media Foundation. WAV, MP3, M4A/AAC, FLAC, WMA and the audio track of MP4 files work with the corresponding installed Windows codecs. Additional containers depend on local codec support. Each clip can contain up to five minutes of mono or stereo audio, up to 128 MB decoded. Windows N editions need the Media Feature Pack.
+Drag several files at once or use **Import**. Soundboard uses Windows Media Foundation for common formats and includes a local, audio-only FFmpeg decoder for the rest. Playback reads the decoded copy. You can import sources up to 256 MiB with up to five minutes of audio per clip.
+
+| Source | Examples |
+| --- | --- |
+| Music and voice notes | MP3, MP2, AAC, M4A/M4B, Ogg Vorbis, Opus, WMA, AMR |
+| Lossless and production audio | WAV, Wave64, AIFF/AIFC, FLAC, ALAC in M4A, WavPack, APE, TTA, CAF, AU |
+| Video and surround audio | MP4, MOV, WebM, MKV/MKA, AVI, WMV, FLV, MPEG, TS/M2TS, AC-3, E-AC-3, DTS |
+
+For video, the importer reads the first audio track. Files need a decodable audio track and must be free of DRM.
 
 The library and its decoded copies live in `%LOCALAPPDATA%\Soundboard`. You can move the original after import. Search, favorites, shortcuts and playback run locally.
 
@@ -42,4 +55,4 @@ Run `./scripts/build.ps1` on Windows to build and test, or add `-Package` for a 
 
 ## License
 
-Soundboard and its original starter sounds are [MIT licensed](LICENSE). See [third-party notices](THIRD-PARTY.md) for the font and runtime licenses.
+Soundboard and its original starter sounds are [MIT licensed](LICENSE). The [third-party notices](THIRD-PARTY.md) cover the font, grid, codec helper and runtimes.

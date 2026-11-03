@@ -80,6 +80,21 @@ internal static class Program
             Require(restored is { Name: "Renamed", Slot: 4, Favorite: true } && lib.State.Routing == new Routing(25, 1, true), "Library settings failed to round-trip.");
             lib.Remove(restored);
             Require(!File.Exists(pcm) && File.Exists(mono) && new Library(temp, assets).State.Sounds.Count == 6, "Remove touched the wrong file.");
+            string media = Path.Combine(AppContext.BaseDirectory, "Media");
+            foreach (string name in new[] { "voice-note.opus", "tone.ogg", "tone.wv", "clip.webm", "program-stream.mpg" })
+            {
+                int duration = ClipImporter.DecodeAsync(Path.Combine(media, name), pcm).GetAwaiter().GetResult();
+                var audio = Wave.Read(pcm);
+                Require(duration is >= 150 and <= 450 && audio.Bytes.Any(b => b != 0), $"Bundled decoder failed on {name}.");
+            }
+            try
+            {
+                ClipImporter.DecodeAsync(Path.Combine(media, "silent-video.mp4"), pcm).GetAwaiter().GetResult();
+                throw new Exception("A video without an audio track must be rejected.");
+            }
+            catch (InvalidDataException) { }
+            lib.RememberFallbackHint();
+            Require(new Library(temp, assets).State.FallbackHintSeen, "The successful fallback shortcut hint must be remembered.");
             string invalid = Path.Combine(temp, "bad.mp3");
             File.WriteAllText(invalid, "not an audio file");
             Require(System.Threading.Tasks.Task.Run(() => NativeAudio.sb_decode(invalid, pcm, out _)).Result < 0, "Invalid media was accepted.");

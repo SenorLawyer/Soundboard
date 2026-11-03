@@ -9,16 +9,19 @@ namespace Soundboard;
 public sealed record Sound(Guid Id, string Name, int DurationMs, int Icon, string Format, bool Favorite = false, int Slot = 0)
 {
     public string DurationLabel => DurationMs < 10000 ? $"{DurationMs / 1000.0:0.00} s" : TimeSpan.FromMilliseconds(DurationMs).ToString(@"m\:ss");
-    public string Section => Favorite ? "Favorites" : "Library";
     public string Shortcut => Slot > 0 ? $"Ctrl Alt {Slot}" : "";
 }
 
 public sealed record Routing(int Volume = 70, int PreviewBus = 0, bool Monitor = false);
-public sealed record Catalog(List<Sound> Sounds, Routing Routing);
+public sealed record Catalog(List<Sound> Sounds, Routing Routing, bool FallbackHintSeen = false);
 
 public sealed class Library
 {
-    public static readonly string[] Extensions = [".wav", ".mp3", ".m4a", ".mp4", ".aac", ".flac", ".wma", ".aif", ".aiff", ".ogg"];
+    public static readonly string[] Extensions = [
+        ".wav", ".wave", ".w64", ".mp3", ".mp2", ".m4a", ".m4b", ".aac", ".adts", ".flac", ".ogg", ".oga", ".opus",
+        ".wma", ".aif", ".aiff", ".aifc", ".caf", ".au", ".snd", ".wv", ".ape", ".ac3", ".eac3", ".dts", ".amr", ".tta",
+        ".mp4", ".m4v", ".mov", ".webm", ".mkv", ".mka", ".avi", ".wmv", ".asf", ".flv", ".mpg", ".mpeg", ".ts", ".m2ts"
+    ];
     private readonly string root;
     private readonly string assets;
     private readonly string index;
@@ -81,6 +84,7 @@ public sealed class Library
     public void Add(Sound sound) => Save(State with { Sounds = [.. State.Sounds, sound] });
     public void Replace(Sound sound) => Save(State with { Sounds = State.Sounds.Select(s => s.Id == sound.Id ? sound : s).ToList() });
     public void SetRouting(Routing routing) => Save(State with { Routing = routing });
+    public void RememberFallbackHint() => Save(State with { FallbackHintSeen = true });
     public void Remove(Sound sound)
     {
         Save(State with { Sounds = State.Sounds.Where(s => s.Id != sound.Id).ToList() });
@@ -89,9 +93,13 @@ public sealed class Library
 
     public static bool Matches(string value, string query)
     {
+        if (query.Length == 0) return true;
         int i = 0;
         foreach (char c in value)
-            if (i < query.Length && char.ToUpperInvariant(c) == char.ToUpperInvariant(query[i])) i++;
-        return i == query.Length;
+        {
+            if (char.ToUpperInvariant(c) != char.ToUpperInvariant(query[i])) continue;
+            if (++i == query.Length) return true;
+        }
+        return false;
     }
 }
