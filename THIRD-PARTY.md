@@ -2,7 +2,7 @@
 
 Soundboard's code and icons use the [MIT license](LICENSE).
 
-The six starter pads use recordings dedicated to the public domain under [CC0 1.0](licenses/CC0-1.0.txt). The bundled edits are also CC0. They have been trimmed, mixed to mono and mastered for voice chat. The [mastering script](scripts/starter-sounds.py) identifies the exact source files and checks their hashes.
+The six starter pads use [CC0 1.0](licenses/CC0-1.0.txt) recordings. Each creator's page below listed CC0 when checked on November 3, 2026. The bundled edits are also CC0. The four Freesound edits use the site's high-quality MP3 previews. The Kenney edits use the files from the original packs. The repository's `scripts/starter-sounds.py` checks the source hashes before trimming and mastering the recordings.
 
 | Pad | Recording |
 | --- | --- |

@@ -3,11 +3,12 @@ import argparse
 import asyncio
 import ctypes as ct
 from fractions import Fraction
+import hashlib
+import io
 import json
 from pathlib import Path
-import shutil
-import subprocess
 import tempfile
+from urllib.request import urlopen
 import wave
 
 import av
@@ -17,6 +18,9 @@ import webrtcvad
 
 RATE, BLOCK = 48000, 960  # 20 ms Opus packets
 PFloat = ct.POINTER(ct.c_float)
+MODEL_URL = ("https://raw.githubusercontent.com/GregorR/rnnoise-models/3eee541a283fd3b8f81b85b1748e3b9ccbefa04d/"
+             "conjoined-burgers-2018-08-28/cb.rnnn")
+MODEL_SHA = "f1357c4e5be9dee8467bead486dfced2d75b640c26ad0b594fa7f102322371d9"
 
 
 class Buffer(ct.Structure):
@@ -106,27 +110,48 @@ def align(recording, reference, position):
 
 
 def suppress(samples, model):
-    # A simple relative filter argument also works with spaces and drive letters in model paths.
-    with tempfile.TemporaryDirectory() as folder:
-        shutil.copyfile(model, Path(folder) / "voice.rnnn")
-        raw = subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-f", "s16le", "-ar", str(RATE),
-                              "-ac", "1", "-i", "pipe:0", "-af", "arnndn=m=voice.rnnn", "-f", "s16le", "pipe:1"],
-                             input=samples.tobytes(), stdout=subprocess.PIPE, cwd=folder, check=True).stdout
-    return np.frombuffer(raw, "<i2").copy()
+    graph = av.filter.Graph()
+    src = graph.add_abuffer(sample_rate=RATE, format="s16", layout="mono", time_base=Fraction(1, RATE))
+    denoiser = graph.add("arnndn", model=str(model.resolve()))
+    pcm = graph.add("aformat", sample_fmts="s16", channel_layouts="mono")
+    sink = graph.add("abuffersink")
+    graph.link_nodes(src, denoiser, pcm, sink).configure()
+    frame = av.AudioFrame.from_ndarray(samples.reshape(1, -1), format="s16", layout="mono")
+    frame.sample_rate = RATE
+    src.push(frame)
+    src.push(None)
+    blocks = []
+    while True:
+        try:
+            blocks.append(sink.pull().to_ndarray().ravel())
+        except av.error.EOFError:
+            return np.concatenate(blocks)
 
 
-async def check(pack, speech_model=None, noise_model=None):
+def levels(samples):
+    blob = io.BytesIO()
+    with wave.open(blob, "wb") as out:
+        out.setparams((1, 2, RATE, 0, "NONE", "not compressed"))
+        out.writeframes(np.rint(samples * 32767).clip(-32768, 32767).astype("<i2").tobytes())
+    blob.seek(0)
+    with av.open(blob, format="wav") as src:
+        stats = json.loads(av.filter.loudnorm.stats("i=-18:tp=-2:lra=7", src.streams.audio[0]))
+    return float(stats["input_i"]), float(stats["input_tp"])
+
+
+async def check(pack, noise_model, speech_model=None):
     names = ("Air horn", "Quick applause", "Coin drop", "Glass ping", "Power down", "Signal check")
     paths = [pack / "Assets" / "Sounds" / f"{i:08x}{'0' * 24}.wav" for i in range(1, 7)]
     pads = render(pack, paths)
+    for name, pad in zip(names, pads):
+        loudness, peak = levels(pad)
+        print(f"B1 at 70%      {name:15} {loudness:.1f} LUFS   {peak:.1f} dBTP", flush=True)
+        assert -20 <= loudness <= -16 and peak <= -3, f"Check the mastering level for {name}"
     gap = np.zeros(RATE // 2)
     source = np.concatenate([gap, *(part for pad in pads for part in (pad, gap))])
     source = np.rint(source * 32767).astype("<i2")
     source = np.pad(source, (0, -len(source) % BLOCK))
-    modes = ["Open mic", "Voice activity"]
-    if noise_model:
-        modes.append("Denoise + VAD")
-    for mode in modes:
+    for mode in ("Open mic", "Voice activity", "Denoise + VAD"):
         filtered = mode == "Denoise + VAD"
         samples = suppress(source, noise_model)[:len(source)] if filtered else source.copy()
         if mode != "Open mic":
@@ -143,21 +168,30 @@ async def check(pack, speech_model=None, noise_model=None):
             match = np.dot(audio, pad) / max(energy * np.linalg.norm(pad), 1e-12)
             print(f"{mode:14} {name:15} {gain:+.1f} dB   match {match:.2f}", flush=True)
             assert (-10 if filtered else -6) < gain < 3 and match > (0.45 if filtered else 0.55), f"Missing or distorted {name}"
+            if mode == "Open mic":
+                assert levels(audio)[1] <= -1, f"Opus left too little peak headroom for {name}"
+            if speech_model and name == "Signal check" and mode != "Open mic":
+                from vosk import KaldiRecognizer, Model, SetLogLevel
+                SetLogLevel(-1)
+                recognizer = KaldiRecognizer(Model(str(speech_model)), RATE)
+                recognizer.AcceptWaveform(np.rint(audio * 32767).clip(-32768, 32767).astype("<i2").tobytes())
+                words = json.loads(recognizer.FinalResult())["text"]
+                print("Received Signal check:", words)
+                assert words == "one two three"
             pos += len(pad) + len(gap)
-        if speech_model and mode != "Open mic":
-            from vosk import KaldiRecognizer, Model, SetLogLevel
-            SetLogLevel(-1)
-            recognizer = KaldiRecognizer(Model(str(speech_model)), RATE)
-            recognizer.AcceptWaveform(np.rint(audio * 32767).clip(-32768, 32767).astype("<i2").tobytes())
-            words = json.loads(recognizer.FinalResult())["text"]
-            print("Received Signal check:", words)
-            assert words == "one two three"
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("package", type=Path, help="extracted Windows application folder")
     parser.add_argument("--speech-model", type=Path, help="optional local English Vosk model")
-    parser.add_argument("--noise-model", type=Path, help="optional RNNoise .rnnn model for FFmpeg")
+    parser.add_argument("--noise-model", type=Path, help="use a local copy of the pinned cb.rnnn model")
     args = parser.parse_args()
-    asyncio.run(check(args.package.resolve(), args.speech_model, args.noise_model))
+    with tempfile.TemporaryDirectory() as tmp:
+        model_path = args.noise_model or Path(tmp) / "cb.rnnn"
+        if not args.noise_model:
+            with urlopen(MODEL_URL, timeout=30) as response:
+                model_path.write_bytes(response.read(512 * 1024))
+        if hashlib.sha256(model_path.read_bytes()).hexdigest() != MODEL_SHA:
+            raise ValueError("Unexpected noise suppression model")
+        asyncio.run(check(args.package.resolve(), model_path, args.speech_model))

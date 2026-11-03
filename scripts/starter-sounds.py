@@ -36,7 +36,8 @@ def main():
     with tempfile.TemporaryDirectory() as scratch:
         inputs = {}
         for key, (url, digest) in SOURCES.items():
-            with urllib.request.urlopen(url, timeout=30) as response:
+            request = urllib.request.Request(url, headers={"User-Agent": "Soundboard starter audio builder"})
+            with urllib.request.urlopen(request, timeout=30) as response:
                 source = response.read()
             if hashlib.sha256(source).hexdigest() != digest:
                 raise ValueError(f"Upstream recording changed: {key}")
