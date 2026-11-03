@@ -1,0 +1,82 @@
+name: Windows
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    name: Windows build and test
+    runs-on: windows-2025
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          dotnet-version: '10.0.x'
+      - name: Verify release tag
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REF_NAME -notmatch '^v\d+\.\d+\.\d+$') { throw 'Use a vMAJOR.MINOR.PATCH release tag.' }
+          git merge-base --is-ancestor HEAD origin/main
+          if ($LASTEXITCODE -ne 0) { throw 'Release tags must point to a commit on main.' }
+          $version = ([xml](Get-Content src/Soundboard/Soundboard.csproj -Raw)).Project.PropertyGroup.Version
+          if ("v$version" -ne $env:GITHUB_REF_NAME) { throw 'Tag and application version differ.' }
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: artifacts/codecs
+          key: windows-audio-import-${{ hashFiles('scripts/codecs.ps1', 'scripts/ffmpeg.sh') }}
+      - name: Build, test and package
+        shell: pwsh
+        run: ./scripts/build.ps1 -Package
+      - name: Check the packaged sounds on a local voice call
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check --only-binary=:all: -r tests/voice-requirements.txt
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $package = Join-Path $env:RUNNER_TEMP 'soundboard-voice-check'
+          Expand-Archive artifacts/Soundboard-win-x64.zip -DestinationPath $package
+          python tests/voice-loopback.py $package --import-proof artifacts/voice-import-proof
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Soundboard-win-x64
+          path: |
+            artifacts/Soundboard-win-x64.zip
+            artifacts/ffmpeg-*.tar.xz
+            artifacts/SHA256SUMS.txt
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: Publish release
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - name: Publish the tested Windows archive
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh run download "$GITHUB_RUN_ID" --repo "$REPO" --name Soundboard-win-x64
+          sha256sum --check SHA256SUMS.txt
+          gh release create "$GITHUB_REF_NAME" Soundboard-win-x64.zip ffmpeg-*.tar.xz SHA256SUMS.txt \
+            --repo "$REPO" --verify-tag --title "Soundboard ${GITHUB_REF_NAME#v}" --generate-notes

@@ -1,0 +1,105 @@
+<Window x:Class="Soundboard.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:local="clr-namespace:Soundboard"
+    xmlns:wrap="clr-namespace:WpfToolkit.Controls;assembly=VirtualizingWrapPanel"
+    Title="Soundboard" Icon="Assets/soundboard.ico" Width="750" Height="475" WindowStartupLocation="CenterScreen" WindowStyle="None" ResizeMode="NoResize" Background="Transparent"
+    Foreground="{StaticResource Primary}" FontFamily="./Assets/Fonts/#Inter, Segoe UI" FontSize="13" UseLayoutRounding="True" TextOptions.TextFormattingMode="Ideal"
+    AllowDrop="True" PreviewDragOver="DragOverFiles" PreviewDragLeave="DragLeaveFiles" PreviewDrop="DropFiles" PreviewKeyDown="OnKey">
+  <Window.Resources><local:PadPlaybackLabel x:Key="PlaybackLabel"/></Window.Resources>
+  <WindowChrome.WindowChrome><WindowChrome CaptionHeight="0" ResizeBorderThickness="0" CornerRadius="12" GlassFrameThickness="-1" UseAeroCaptionButtons="False"/></WindowChrome.WindowChrome>
+  <Border x:Name="Chrome" BorderBrush="#477D7982" BorderThickness="1" CornerRadius="11">
+    <Border.Background><LinearGradientBrush StartPoint="0,0" EndPoint="1,1"><GradientStop Color="#DD121316" Offset="0.24"/><GradientStop Color="#EA1D1D1F" Offset="1"/></LinearGradientBrush></Border.Background>
+    <Grid>
+      <Grid.RowDefinitions><RowDefinition Height="55"/><RowDefinition/><RowDefinition Height="40"/></Grid.RowDefinitions>
+      <Border Grid.RowSpan="3" CornerRadius="10" IsHitTestVisible="False"><Border.Background><RadialGradientBrush Center=".55,.015" GradientOrigin=".55,.015" RadiusX=".55" RadiusY=".34"><GradientStop Color="#21E9E6F2" Offset="0"/><GradientStop Color="#00E9E6F2" Offset="1"/></RadialGradientBrush></Border.Background></Border>
+      <Border BorderBrush="{StaticResource Hairline}" BorderThickness="0,0,0,1" Background="Transparent" MouseLeftButtonDown="DragWindow">
+        <Grid Margin="16,0,12,0"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+          <Viewbox Width="21" Height="21" Margin="0,0,13,0"><Path Data="M3,10 L3,14 M7.5,5 L7.5,19 M12,2 L12,22 M16.5,6 L16.5,18 M21,10 L21,14" Stroke="#A4A0AC" StrokeThickness="2.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/></Viewbox>
+          <DockPanel Grid.Column="1"><Button x:Name="ClearSearch" DockPanel.Dock="Right" Margin="4,0" Height="26" Visibility="Collapsed" Click="ClearSearchClick" ToolTip="Clear search" AutomationProperties.Name="Clear search" Content="×"/><Grid><TextBlock x:Name="Placeholder" Text="Search sounds..." Foreground="{StaticResource Muted}" FontSize="18" IsHitTestVisible="False"/><TextBox x:Name="Search" FontSize="18" AutomationProperties.Name="Search sounds" TextChanged="SearchChanged"/></Grid></DockPanel>
+          <Button x:Name="ImportButton" Grid.Column="2" Click="ImportClick" ToolTip="Import sounds (Ctrl+O)" AutomationProperties.Name="Import sounds"><StackPanel Orientation="Horizontal"><TextBlock x:Name="ImportIcon" FontFamily="Segoe MDL2 Assets" Text="&#xE710;" FontSize="12" Margin="0,0,6,0"/><TextBlock x:Name="ImportLabel" Text="Import"/></StackPanel></Button>
+        </Grid>
+      </Border>
+      <Grid Grid.Row="1">
+        <Grid.RowDefinitions><RowDefinition Height="44"/><RowDefinition/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+        <DockPanel Margin="13,0,16,0" LastChildFill="False">
+          <TextBlock x:Name="PadHint" DockPanel.Dock="Right" Text="Click a pad to play to B1" FontSize="11" Foreground="{StaticResource Muted}"/>
+          <RadioButton x:Name="AllTab" GroupName="LibraryFilter" IsChecked="True" Style="{StaticResource LibraryTab}" Checked="FilterTabChanged" AutomationProperties.Name="All sounds"><StackPanel Orientation="Horizontal"><TextBlock Text="All sounds"/><TextBlock x:Name="AllCount" Margin="6,0,0,0" Foreground="{StaticResource Muted}"/></StackPanel></RadioButton>
+          <RadioButton x:Name="FavoriteTab" GroupName="LibraryFilter" Style="{StaticResource LibraryTab}" Checked="FilterTabChanged" Margin="3,0,0,0" AutomationProperties.Name="Favorites"><StackPanel Orientation="Horizontal"><TextBlock Text="Favorites"/><TextBlock x:Name="FavoriteCount" Margin="6,0,0,0" Foreground="{StaticResource Muted}"/></StackPanel></RadioButton>
+        </DockPanel>
+        <ListBox x:Name="Sounds" Grid.Row="1" Padding="0" Margin="9,0,5,3" SelectionChanged="SelectionChanged" PreviewMouseRightButtonUp="RowMenu" AutomationProperties.Name="Sound pads">
+          <ListBox.ItemsPanel><ItemsPanelTemplate><wrap:VirtualizingWrapPanel ItemSize="230,103" SpacingMode="None" StretchItems="True"/></ItemsPanelTemplate></ListBox.ItemsPanel>
+          <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem">
+            <Setter Property="Height" Value="103"/><Setter Property="Padding" Value="0"/><Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="AutomationProperties.Name" Value="{Binding Name}"/>
+            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem">
+              <Border x:Name="Tile" CornerRadius="8" Margin="4" Background="#0CFFFFFF" BorderBrush="#1AFFFFFF" BorderThickness="1"><ContentPresenter/></Border>
+              <ControlTemplate.Triggers>
+                <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Tile" Property="Background" Value="#18FFFFFF"/><Setter TargetName="Tile" Property="BorderBrush" Value="#38FFFFFF"/></Trigger>
+                <Trigger Property="IsSelected" Value="True"><Setter TargetName="Tile" Property="Background" Value="#1AFFFFFF"/><Setter TargetName="Tile" Property="BorderBrush" Value="#65D5CBD6"/></Trigger>
+              </ControlTemplate.Triggers>
+            </ControlTemplate></Setter.Value></Setter>
+          </Style></ListBox.ItemContainerStyle>
+          <ListBox.ItemTemplate><DataTemplate DataType="{x:Type local:Sound}">
+            <Grid>
+              <Button x:Name="PadPlay" Style="{StaticResource PadSurface}" Click="PadClick" PreviewMouseLeftButtonDown="PadMouseDown" AutomationProperties.Name="{Binding Name, StringFormat='Play {0} to microphone'}">
+                <Grid Margin="12,9,11,8"><Grid.RowDefinitions><RowDefinition Height="29"/><RowDefinition Height="*"/><RowDefinition Height="17"/></Grid.RowDefinitions>
+                  <StackPanel Orientation="Horizontal"><local:SoundGlyph Variant="{Binding Icon}" Width="29" Height="29"/>
+                    <Border x:Name="PlaybackPill" Background="#22E9A5A7" CornerRadius="4" Padding="6,2" VerticalAlignment="Center" Margin="7,0,0,0">
+                      <TextBlock x:Name="PlaybackBadge" FontSize="10" FontWeight="SemiBold" Foreground="#F0CFD0"><TextBlock.Text><MultiBinding Converter="{StaticResource PlaybackLabel}"><Binding/><Binding Path="PlayingPad" RelativeSource="{RelativeSource AncestorType={x:Type local:MainWindow}}"/></MultiBinding></TextBlock.Text></TextBlock>
+                    </Border>
+                  </StackPanel>
+                  <TextBlock Grid.Row="1" Text="{Binding Name}" VerticalAlignment="Bottom" FontSize="14" FontWeight="Medium" Margin="0,0,0,2" TextTrimming="CharacterEllipsis" Foreground="{StaticResource Primary}"/>
+                  <DockPanel Grid.Row="2" LastChildFill="False" TextElement.FontSize="11" TextElement.Foreground="{StaticResource Muted}">
+                    <TextBlock DockPanel.Dock="Right" Text="{Binding Shortcut}"/><TextBlock Text="{Binding Format}"/><TextBlock Text="·" Margin="5,0"/><TextBlock Text="{Binding DurationLabel}" Typography.NumeralAlignment="Tabular"/>
+                  </DockPanel>
+                </Grid>
+              </Button>
+              <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,6,6,0">
+                <Button x:Name="PadPreview" Style="{StaticResource TileTool}" Click="PadPreviewClick" Visibility="Hidden" ToolTip="Preview privately" AutomationProperties.Name="{Binding Name, StringFormat='Preview {0} privately'}"><Path Data="{StaticResource Headphones}" Stroke="{StaticResource Secondary}" StrokeThickness="1.45" StrokeLineJoin="Round" Width="16" Height="15"/></Button>
+                <Button x:Name="PadFavorite" Style="{StaticResource TileTool}" Click="PadFavoriteClick" Visibility="Hidden" ToolTip="Add to favorites" AutomationProperties.Name="{Binding Name, StringFormat='Toggle favorite for {0}'}"><Path x:Name="Star" Data="M8,1.6 9.9,5.5 14.2,6.1 11.1,9.2 11.8,13.5 8,11.5 4.2,13.5 4.9,9.2 1.8,6.1 6.1,5.5 Z" Stroke="{StaticResource Muted}" StrokeThickness="1.15" StrokeLineJoin="Round" Width="16" Height="15"/></Button>
+              </StackPanel>
+            </Grid>
+            <DataTemplate.Triggers>
+              <DataTrigger Binding="{Binding Text, ElementName=PlaybackBadge}" Value=""><Setter TargetName="PlaybackPill" Property="Visibility" Value="Collapsed"/></DataTrigger>
+              <DataTrigger Binding="{Binding Text, ElementName=PlaybackBadge}" Value="Previewing"><Setter TargetName="PlaybackPill" Property="Background" Value="#227CBFA4"/><Setter TargetName="PlaybackBadge" Property="Foreground" Value="#C6E5D7"/></DataTrigger>
+              <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True"><Setter TargetName="PadPreview" Property="Visibility" Value="Visible"/><Setter TargetName="PadFavorite" Property="Visibility" Value="Visible"/></DataTrigger>
+              <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True"><Setter TargetName="PadPreview" Property="Visibility" Value="Visible"/><Setter TargetName="PadFavorite" Property="Visibility" Value="Visible"/></DataTrigger>
+              <DataTrigger Binding="{Binding Favorite}" Value="True"><Setter TargetName="PadFavorite" Property="Visibility" Value="Visible"/><Setter TargetName="PadFavorite" Property="ToolTip" Value="Remove from favorites"/><Setter TargetName="Star" Property="Stroke" Value="#CFB584"/><Setter TargetName="Star" Property="Fill" Value="#CFB584"/></DataTrigger>
+            </DataTemplate.Triggers>
+          </DataTemplate></ListBox.ItemTemplate>
+        </ListBox>
+        <StackPanel x:Name="Empty" Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed"><TextBlock x:Name="EmptyTitle" HorizontalAlignment="Center" FontWeight="SemiBold" FontSize="16"/><TextBlock x:Name="EmptyHint" HorizontalAlignment="Center" Foreground="{StaticResource Secondary}" Margin="0,7,0,12"/><Button x:Name="EmptyAction" Click="EmptyClick" Background="#17FFFFFF" Padding="11,5" HorizontalAlignment="Center"/></StackPanel>
+        <TextBlock x:Name="DropHint" Grid.Row="2" HorizontalAlignment="Center" Margin="0,3,0,12" FontSize="11" Foreground="{StaticResource Muted}" Text="Drop audio, video or a folder anywhere to import"/>
+      </Grid>
+      <Border Grid.Row="2" Background="#15000000" CornerRadius="0,0,10,10" BorderBrush="{StaticResource Hairline}" BorderThickness="0,1,0,0">
+        <Grid Margin="8,0,6,0"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+          <DockPanel LastChildFill="False">
+          <Button x:Name="StopButton" DockPanel.Dock="Left" Width="25" Height="24" Margin="3,0,3,0" Padding="0" Background="#24ED9295" Visibility="Collapsed" Click="StopClick" ToolTip="Stop playback (Esc)" AutomationProperties.Name="Stop playback"><Border Width="8" Height="8" CornerRadius="1.5" Background="#F3B5B8"/></Button>
+          <Button x:Name="RoutingButton" HorizontalAlignment="Left" Click="RoutingClick" AutomationProperties.Name="Audio routing" ToolTip="Audio routing"><StackPanel Orientation="Horizontal">
+            <Image Source="Assets/soundboard.ico" Width="16" Height="16" Margin="0,0,8,0"/><TextBlock Text="Soundboard" FontWeight="SemiBold" FontSize="12"/><TextBlock Text="›" Margin="8,0" Foreground="{StaticResource Muted}"/>
+            <Ellipse x:Name="RouteDot" Width="6" Height="6" VerticalAlignment="Center" Fill="#A69A82" Margin="0,1,6,0"/><TextBlock x:Name="RouteStatus" Text="B1" FontSize="12" TextTrimming="CharacterEllipsis" MaxWidth="170"/>
+          </StackPanel></Button>
+          </DockPanel>
+          <Button Grid.Column="1" x:Name="PreviewButton" Click="PreviewClick" ToolTip="Preview privately (Ctrl+P)" AutomationProperties.Name="{Binding Text, ElementName=PreviewText}"><StackPanel Orientation="Horizontal"><Path Data="{StaticResource Headphones}" Stroke="{StaticResource Secondary}" StrokeThickness="1.4" StrokeLineJoin="Round" Width="16" Height="15" VerticalAlignment="Center" Margin="0,0,5,0"/><TextBlock x:Name="PreviewText" Text="Preview"/></StackPanel></Button>
+          <Button Grid.Column="2" x:Name="PrimaryButton" Click="PlayClick" ToolTip="Send this sound to Voicemeeter Out B1 (Enter)" AutomationProperties.Name="{Binding Text, ElementName=PrimaryText}"><StackPanel Orientation="Horizontal"><TextBlock x:Name="PrimaryText" Text="Play to mic" Foreground="{StaticResource Primary}" FontWeight="Medium" Margin="0,0,6,0"/><Border Style="{StaticResource Keycap}"><TextBlock Text="↵" HorizontalAlignment="Center" FontSize="14"/></Border></StackPanel></Button>
+          <Border Grid.Column="3" Background="{StaticResource Hairline}" Width="1" Height="15" Margin="3,0"/>
+          <Button x:Name="ActionsButton" Grid.Column="4" Click="ActionsClick" AutomationProperties.Name="Actions"><StackPanel Orientation="Horizontal"><TextBlock Text="Actions" Margin="0,0,6,0"/><Border Style="{StaticResource Keycap}"><TextBlock Text="Ctrl" HorizontalAlignment="Center"/></Border><Border Style="{StaticResource Keycap}"><TextBlock Text="K" HorizontalAlignment="Center"/></Border></StackPanel></Button>
+        </Grid>
+      </Border>
+      <Border Grid.Row="2" x:Name="ProgressLine" Height="2" HorizontalAlignment="Left" VerticalAlignment="Top" Background="#E8888F" Visibility="Collapsed" IsHitTestVisible="False"/>
+      <Border Grid.Row="1" x:Name="Notice" HorizontalAlignment="Center" VerticalAlignment="Bottom" MaxWidth="650" Margin="12,0,12,10" Padding="12,7" Style="{StaticResource Sheet}" Visibility="Collapsed"><TextBlock x:Name="NoticeText" TextWrapping="Wrap" TextAlignment="Center"/></Border>
+      <Border x:Name="DismissLayer" Grid.RowSpan="2" Background="Transparent" Visibility="Collapsed" MouseLeftButtonDown="DismissClick"/>
+      <Border x:Name="MenuPanel" Grid.RowSpan="2" HorizontalAlignment="Right" Width="340" VerticalAlignment="Bottom" MaxHeight="320" Margin="10,0,11,8" Style="{StaticResource Sheet}" Visibility="Collapsed">
+        <Grid KeyboardNavigation.TabNavigation="Cycle"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="39"/></Grid.RowDefinitions>
+          <DockPanel Margin="12,8,12,5"><Button x:Name="MenuBack" Width="24" Height="22" Padding="4,2" Margin="-3,0,5,0" DockPanel.Dock="Left" Click="BackClick" ToolTip="Back (Esc)" AutomationProperties.Name="Back"><Path Data="M8,2 L3,7 8,12" Stroke="{StaticResource Secondary}" StrokeThickness="1.6" StrokeLineJoin="Round"/></Button><TextBlock x:Name="MenuHeading" MinHeight="20" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource Secondary}" TextTrimming="CharacterEllipsis"/></DockPanel>
+          <ListBox x:Name="Commands" Grid.Row="1" Margin="5,0,5,5" MaxHeight="225" PreviewMouseLeftButtonUp="CommandClick" AutomationProperties.Name="Available actions"><ListBox.ItemContainerStyle><Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}"><Setter Property="Height" Value="32"/><Setter Property="AutomationProperties.Name" Value="{Binding Title}"/></Style></ListBox.ItemContainerStyle><ListBox.ItemTemplate><DataTemplate><DockPanel><TextBlock DockPanel.Dock="Right" Text="{Binding Keys}" Foreground="{StaticResource Muted}" FontSize="11"/><TextBlock DockPanel.Dock="Left" Text="{Binding Glyph}" FontFamily="Segoe MDL2 Assets" Foreground="{StaticResource Secondary}" Width="24"/><TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis"/></DockPanel></DataTemplate></ListBox.ItemTemplate></ListBox>
+          <TextBlock Grid.Row="1" x:Name="NoCommands" Text="No matching actions" Foreground="{StaticResource Muted}" Margin="14,9,14,15" Visibility="Collapsed"/>
+          <Border Grid.Row="2" BorderBrush="{StaticResource Hairline}" BorderThickness="0,1,0,0" Padding="14,0,7,0"><DockPanel><Button x:Name="ClearMenuFilter" DockPanel.Dock="Right" Height="25" Click="ClearMenuClick" AutomationProperties.Name="Clear filter" ToolTip="Clear filter" Content="×"/><Grid><TextBlock x:Name="MenuHint" Text="Search actions..." Foreground="{StaticResource Muted}" IsHitTestVisible="False"/><TextBox x:Name="MenuSearch" AutomationProperties.Name="Search actions" TextChanged="MenuSearchChanged"/></Grid></DockPanel></Border>
+        </Grid>
+      </Border>
+      <Border x:Name="EditPanel" Grid.RowSpan="2" HorizontalAlignment="Right" VerticalAlignment="Bottom" Width="340" Margin="10,0,11,8" Padding="15" Style="{StaticResource Sheet}" Visibility="Collapsed">
+        <StackPanel KeyboardNavigation.TabNavigation="Cycle"><TextBlock x:Name="EditTitle" FontWeight="SemiBold" FontSize="15"/><TextBlock x:Name="EditHint" Foreground="{StaticResource Secondary}" TextWrapping="Wrap" Margin="0,6,0,10"/><Border x:Name="EditInputBorder" CornerRadius="5" BorderBrush="{StaticResource Hairline}" BorderThickness="1" Padding="8,6"><TextBox x:Name="EditText" MaxLength="100" AutomationProperties.Name="New sound name"/></Border>
+          <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0"><Button x:Name="CancelButton" Content="Cancel" Click="CancelEdit"/><Button x:Name="ConfirmEdit" Background="#21FFFFFF" Padding="12,5" Margin="6,0,0,0" Click="CommitEdit"/></StackPanel></StackPanel>
+      </Border>
+      <Border x:Name="DropLayer" Grid.RowSpan="3" Margin="5" Background="#F02C2A30" BorderBrush="#D18F94" BorderThickness="1" CornerRadius="8" IsHitTestVisible="False" Visibility="Collapsed"><StackPanel VerticalAlignment="Center" HorizontalAlignment="Center"><TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE896;" FontSize="27" Foreground="#F2ACB2" HorizontalAlignment="Center"/><TextBlock Text="Drop to add sound pads" FontSize="18" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,12,0,4"/><TextBlock Text="Audio, video or a folder · Imported locally" Foreground="{StaticResource Secondary}" HorizontalAlignment="Center"/></StackPanel></Border>
+    </Grid>
+  </Border>
+</Window>

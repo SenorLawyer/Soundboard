@@ -1,0 +1,22 @@
+name: Bug report
+description: Report a playback, library, or launcher problem.
+body:
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How can we reproduce it?
+      description: Include what happened, what you expected, and the steps or clip format that trigger it.
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: Include Soundboard, Windows and Voicemeeter Potato.
+    validations:
+      required: true
+  - type: textarea
+    id: route
+    attributes:
+      label: Audio route
+      description: For audio issues, include the selected recording endpoint and whether you used Play or Preview.
