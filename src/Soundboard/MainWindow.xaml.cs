@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -29,7 +30,8 @@ public partial class MainWindow : Window
     private Sound? active;
     private int generation, lastPosition, activeFrames;
     private long lastAdvance;
-    private bool loading, importing, quitAfterImport, quitting, previewing;
+    private bool loading, quitAfterImport, quitting, previewing;
+    private CancellationTokenSource? importCancellation;
     private Sound? Selected => Sounds.SelectedItem as Sound;
     internal bool CanStopPlayback => active != null || loading;
 
@@ -39,9 +41,10 @@ public partial class MainWindow : Window
         InitializeComponent();
         Rebuild();
         Activated += (_, _) => { if (shell != null && active == null) RefreshRoute(); };
-        Sounds.PreviewTextInput += (_, input) =>
+        PreviewTextInput += (_, input) =>
         {
-            if (input.Text.Length == 0 || Keyboard.Modifiers.HasFlag(ModifierKeys.Control)) return;
+            if (panel != "" || edit != "" || input.Text.Length == 0 || Keyboard.Modifiers.HasFlag(ModifierKeys.Control) ||
+                !(Sounds.IsKeyboardFocusWithin || AllTab.IsKeyboardFocused || FavoriteTab.IsKeyboardFocused)) return;
             Search.Focus(); Search.AppendText(input.Text); Search.CaretIndex = Search.Text.Length;
             input.Handled = true;
         };
@@ -77,7 +80,7 @@ public partial class MainWindow : Window
     public void HidePalette() { ClosePanel(); Hide(); }
     public void Quit()
     {
-        if (importing) { quitAfterImport = true; Report("Finishing the current import before quitting…"); return; }
+        if (importCancellation != null) { quitAfterImport = true; CancelImport(); return; }
         quitting = true;
         Close();
     }
@@ -134,10 +137,11 @@ public partial class MainWindow : Window
         view.Filter = CurrentFilter(); SelectResult(null);
     }
     private void ClearSearchClick(object sender, RoutedEventArgs e) { Search.Clear(); FocusSearch(); }
-    private void FilterTabClick(object sender, RoutedEventArgs e)
+    private void FilterTabChanged(object sender, RoutedEventArgs e)
     {
         if (view == null) return;
-        var id = Selected?.Id; view.Filter = CurrentFilter(); SelectResult(id); FocusSearch();
+        DismissNotice();
+        var id = Selected?.Id; view.Filter = CurrentFilter(); SelectResult(id);
     }
 
     private void Report(string text)
@@ -148,10 +152,13 @@ public partial class MainWindow : Window
         noticeTimer.Stop(); noticeTimer.Start();
     }
     private void DismissNotice() { noticeTimer.Stop(); Notice.Visibility = Visibility.Collapsed; }
+    private static bool UserFacingError(Exception ex) =>
+        ex is IOException or InvalidDataException or UnauthorizedAccessException or InvalidOperationException or ExternalException or
+        BadImageFormatException or EntryPointNotFoundException or DllNotFoundException or ArgumentException or NotSupportedException or System.Security.SecurityException;
     private void Guard(Action action)
     {
         try { action(); }
-        catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException or InvalidOperationException or ExternalException or BadImageFormatException or EntryPointNotFoundException or DllNotFoundException)
+        catch (Exception ex) when (UserFacingError(ex))
         { Report(ex.Message); }
     }
     private void RefreshRoute()
@@ -184,7 +191,7 @@ public partial class MainWindow : Window
             transport.Start();
             RefreshPlaybackText();
         }
-        catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException or InvalidOperationException or ExternalException or BadImageFormatException or EntryPointNotFoundException or DllNotFoundException)
+        catch (Exception ex) when (UserFacingError(ex))
         {
             if (request == generation) { Stop(); RefreshRoute(); Report(ex.Message); }
         }
@@ -237,73 +244,125 @@ public partial class MainWindow : Window
         if (sound != null) _ = Play(sound, false);
     }
 
-    private void ImportClick(object sender, RoutedEventArgs e) => ChooseFiles();
+    private void ImportClick(object sender, RoutedEventArgs e)
+    {
+        if (importCancellation != null) CancelImport(); else ChooseFiles();
+    }
+    private void CancelImport()
+    {
+        ImportLabel.Text = "Stopping…"; ImportButton.IsEnabled = false;
+        importCancellation?.Cancel();
+    }
     private void EmptyClick(object sender, RoutedEventArgs e)
     {
         if (library.State.Sounds.Count == 0) ChooseFiles();
         else if (Search.Text.Length != 0) { Search.Clear(); FocusSearch(); }
-        else { AllTab.IsChecked = true; FilterTabClick(sender, e); }
+        else { AllTab.IsChecked = true; FocusSearch(); }
     }
     private void ChooseFiles()
     {
-        if (importing) return;
+        if (importCancellation != null) return;
         ClosePanel();
         var dialog = new Microsoft.Win32.OpenFileDialog { Title = "Import sounds", Multiselect = true,
             Filter = $"Audio and video files|{string.Join(';', Library.Extensions.Select(x => "*" + x))}|All files|*.*" };
         if (dialog.ShowDialog(this) == true) _ = Import(dialog.FileNames);
     }
-    private async Task Import(string[] files)
+    private static (List<string> Files, List<string> Errors) ExpandSources(string[] paths, CancellationToken token)
     {
-        if (importing) return;
-        importing = true;
-        ImportButton.IsEnabled = false;
-        int added = 0, skipped = 0;
-        string firstError = "";
-        Guid? first = null;
+        var files = new List<string>();
+        var errors = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        void Add(string path) { if (seen.Add(path)) files.Add(path); }
+        var options = new EnumerationOptions { RecurseSubdirectories = false, IgnoreInaccessible = false,
+            AttributesToSkip = FileAttributes.Hidden | FileAttributes.System | FileAttributes.ReparsePoint };
+        foreach (string path in paths)
+        {
+            token.ThrowIfCancellationRequested();
+            try
+            {
+                string full = Path.GetFullPath(path);
+                if (!Directory.Exists(full)) { Add(full); continue; }
+                var children = new List<string>();
+                foreach (var child in Directory.EnumerateFiles(full, "*", options))
+                {
+                    token.ThrowIfCancellationRequested();
+                    if (Library.Supports(child)) children.Add(child);
+                }
+                if (children.Count == 0) errors.Add($"No supported files in {Path.GetFileName(full)}.");
+                children.Sort(StringComparer.OrdinalIgnoreCase);
+                foreach (string child in children) Add(child);
+            }
+            catch (Exception ex) when (UserFacingError(ex)) { errors.Add($"{Path.GetFileName(path)}: {ex.Message}"); }
+        }
+        return (files, errors);
+    }
+
+    private async Task Import(string[] paths)
+    {
+        if (importCancellation != null) return;
+        using var cancel = new CancellationTokenSource();
+        importCancellation = cancel;
+        var token = cancel.Token;
+        ImportIcon.Text = "\uE711"; ImportLabel.Text = "Preparing…";
+        ImportButton.ToolTip = "Cancel import and keep completed sounds";
+        System.Windows.Automation.AutomationProperties.SetName(ImportButton, "Cancel import");
+        var pending = new List<Sound>();
+        int skipped = 0, total = 0;
+        string? firstError = null;
         try
         {
-            foreach (string source in files)
+            try
             {
-                if (quitting || quitAfterImport) return;
-                var id = Guid.NewGuid();
-                var path = Path.Combine(library.ClipsDirectory, id.ToString("N") + ".wav");
-                var temp = path + ".part";
-                try
+                var selection = await Task.Run(() => ExpandSources(paths, token), token).WaitAsync(token);
+                total = selection.Files.Count; skipped = selection.Errors.Count; firstError = selection.Errors.FirstOrDefault();
+                for (int i = 0; i < total; ++i)
                 {
-                    var file = new FileInfo(source);
-                    if (!file.Exists || !Library.Extensions.Contains(file.Extension, StringComparer.OrdinalIgnoreCase))
-                        throw new InvalidDataException("Choose a supported audio or video file.");
-                    ImportLabel.Text = files.Length == 1 ? "Importing…" : $"Importing {added + skipped + 1} of {files.Length}";
-                    int ms = await ClipImporter.DecodeAsync(file.FullName, temp);
-                    if (quitting || quitAfterImport) return;
-                    File.Move(temp, path);
-                    var name = Path.GetFileNameWithoutExtension(file.Name).Trim();
-                    if (name.Length == 0) name = "Untitled sound";
-                    var sound = new Sound(id, name, ms, id.ToByteArray()[0] % 6, file.Extension[1..].ToUpperInvariant());
-                    try { library.Add(sound); } catch { File.Delete(path); throw; }
-                    first ??= id;
-                    added++;
+                    token.ThrowIfCancellationRequested();
+                    string source = selection.Files[i];
+                    var id = Guid.NewGuid();
+                    string temp = library.StagingFile(id);
+                    bool ready = false;
+                    try
+                    {
+                        if (!Library.Supports(source)) throw new InvalidDataException("Choose a supported audio or video file.");
+                        ImportLabel.Text = total == 1 ? "Importing…" : $"Importing {i + 1} of {total}";
+                        int ms = await ClipImporter.DecodeAsync(source, temp, token);
+                        string name = Path.GetFileNameWithoutExtension(source).Trim();
+                        pending.Add(new(id, name.Length == 0 ? "Untitled sound" : name, ms, id.ToByteArray()[0] % 6, Path.GetExtension(source)[1..].ToUpperInvariant()));
+                        ready = true;
+                    }
+                    catch (Exception ex) when (UserFacingError(ex))
+                    { skipped++; firstError ??= $"{Path.GetFileName(source)}: {ex.Message}"; }
+                    finally { if (!ready) Guard(() => File.Delete(temp)); }
                 }
-                catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException or ExternalException or DllNotFoundException or BadImageFormatException)
-                {
-                    if (skipped++ == 0) firstError = $"{Path.GetFileName(source)}: {ex.Message}";
-                }
-                finally { if (File.Exists(temp)) Guard(() => File.Delete(temp)); }
             }
-            if (added > 0) { AllTab.IsChecked = true; Search.Clear(); Rebuild(first); }
-            var message = added == 1 ? "Imported 1 sound." : $"Imported {added} sounds.";
-            Report(skipped == 0 ? message : files.Length == 1 ? firstError : $"{message} {skipped} skipped. {firstError}");
+            catch (OperationCanceledException) when (cancel.IsCancellationRequested) { }
+            if (pending.Count > 0)
+            {
+                library.CommitImports(pending);
+                AllTab.IsChecked = true; Search.Clear(); Rebuild(pending[0].Id);
+            }
+            if (quitAfterImport) return;
+            var message = pending.Count == 1 ? "Imported 1 sound." : $"Imported {pending.Count} sounds.";
+            if (cancel.IsCancellationRequested) Report(pending.Count == 0 ? "Import cancelled." : $"Import cancelled. {message}");
+            else if (skipped > 0) Report(pending.Count == 0 && skipped == 1 ? firstError! : $"{message} {skipped} skipped. {firstError}");
+            else Report(message);
         }
+        catch (Exception ex) when (UserFacingError(ex)) { Report(ex.Message); }
         finally
         {
-            importing = false; ImportButton.IsEnabled = true; ImportLabel.Text = "Import";
+            foreach (var sound in pending) Guard(() => File.Delete(library.StagingFile(sound.Id)));
+            importCancellation = null;
+            ImportIcon.Text = "\uE710"; ImportButton.IsEnabled = true; ImportLabel.Text = "Import";
+            ImportButton.ToolTip = "Import sounds (Ctrl+O)";
+            System.Windows.Automation.AutomationProperties.SetName(ImportButton, "Import sounds");
             if (quitAfterImport) Quit();
         }
     }
 
     private void DragOverFiles(object sender, DragEventArgs e)
     {
-        bool files = !importing && e.Data.GetDataPresent(DataFormats.FileDrop);
+        bool files = importCancellation == null && e.Data.GetDataPresent(DataFormats.FileDrop);
         e.Effects = files ? DragDropEffects.Copy : DragDropEffects.None;
         DropLayer.Visibility = files ? Visibility.Visible : Visibility.Collapsed;
         e.Handled = true;

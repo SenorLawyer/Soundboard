@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 
 namespace Soundboard;
@@ -199,6 +200,8 @@ public partial class MainWindow
     {
         var key = e.Key == Key.System ? e.SystemKey : e.Key;
         bool ctrl = Keyboard.Modifiers == ModifierKeys.Control;
+        bool boardInput = e.OriginalSource is UIElement source && source is not ButtonBase &&
+            (source == Search || source == Sounds || Search.IsAncestorOf(source) || Sounds.IsAncestorOf(source));
         if (key == Key.Escape)
         {
             if (edit != "") FocusSearch();
@@ -212,11 +215,11 @@ public partial class MainWindow
         else if (panel != "")
         {
             if (key is Key.Up or Key.Down) Move(Commands, key == Key.Up ? -1 : 1);
-            else if (key == Key.Enter && Keyboard.FocusedElement is not Button) ExecuteCommand();
+            else if (key == Key.Enter && e.OriginalSource is not ButtonBase) ExecuteCommand();
             else return;
         }
         else if (ctrl && key == Key.O) ChooseFiles();
-        else if (key is Key.Up or Key.Down || (key is Key.Left or Key.Right && (!Search.IsKeyboardFocused || Search.Text.Length == 0)))
+        else if (boardInput && (key is Key.Up or Key.Down || (key is Key.Left or Key.Right && (!Search.IsKeyboardFocused || Search.Text.Length == 0))))
         {
             Move(Sounds, key switch { Key.Up => -PadColumns, Key.Down => PadColumns, Key.Left => -1, _ => 1 });
             if (Sounds.SelectedItem is { } selected && Sounds.ItemContainerGenerator.ContainerFromItem(selected) is ListBoxItem pad) pad.Focus();
@@ -224,13 +227,13 @@ public partial class MainWindow
         else if (ctrl && key == Key.F) { FocusSearch(); Search.SelectAll(); }
         else if (key == Key.Back && Sounds.IsKeyboardFocusWithin && Search.Text.Length > 0)
         { Search.Focus(); Search.Text = Search.Text[..^1]; Search.CaretIndex = Search.Text.Length; }
-        else if (key == Key.Enter && Keyboard.FocusedElement is not Button) Primary();
+        else if (key == Key.Enter && boardInput) Primary();
         else if (Selected is { } sound)
         {
             if (ctrl && key == Key.P) Preview();
             else if (ctrl && key == Key.D) Guard(() => Favorite(sound));
-            else if (key == Key.F2) BeginEdit(sound, "Rename");
-            else if (key == Key.Delete && (Search.Text == "" || !Search.IsKeyboardFocusWithin)) BeginEdit(sound, "Remove");
+            else if (boardInput && key == Key.F2) BeginEdit(sound, "Rename");
+            else if (boardInput && key == Key.Delete && (Search.Text == "" || !Search.IsKeyboardFocusWithin)) BeginEdit(sound, "Remove");
             else return;
         }
         else return;

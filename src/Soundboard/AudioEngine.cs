@@ -11,8 +11,6 @@ namespace Soundboard;
 internal static class NativeAudio
 {
     internal const string Dll = "Soundboard.Audio.dll";
-    [DllImport(Dll, CharSet = CharSet.Unicode, ExactSpelling = true)]
-    internal static extern int sb_decode(string source, string destination, out int duration);
     [DllImport(Dll)] internal static extern void sb_set_clip(IntPtr samples, int frames, int rate, int b1, int monitor, float gain);
     [DllImport(Dll)] internal static extern void sb_clear();
     [DllImport(Dll)] internal static extern int sb_position();

@@ -17,6 +17,7 @@ internal static class Program
     private static void Main(string[] args)
     {
         if (args is ["--drop"]) { DropCheck.Run(); return; }
+        if (args is ["--formats", var corpus]) { DropCheck.Run(Path.GetFullPath(corpus)); return; }
         // Opt-in hardware bench. The standard checks use an isolated library.
         if (args is ["--live", var file, var route])
         {
@@ -60,9 +61,8 @@ internal static class Program
             }
             var id = Guid.NewGuid();
             string pcm = Path.Combine(lib.ClipsDirectory, id.ToString("N") + ".wav");
-            int ms = 0;
-            int hr = System.Threading.Tasks.Task.Run(() => NativeAudio.sb_decode(mono, pcm, out ms)).Result;
-            Require(hr == 0 && ms is >= 149 and <= 151, $"Decode failed (0x{hr:X8}, {ms} ms).");
+            int ms = ClipImporter.DecodeAsync(mono, pcm).GetAwaiter().GetResult();
+            Require(ms is >= 149 and <= 151, $"Decode failed ({ms} ms).");
             var decoded = Wave.Read(pcm);
             Require(decoded.Frames == frames && decoded.Rate == rate, "Decoder changed the duration or sample rate.");
             for (int i = 0; i < frames; ++i)
@@ -75,6 +75,8 @@ internal static class Program
             lib.Add(added);
             lib.Replace(added with { Name = "Renamed", Slot = 4, Favorite = true });
             lib.SetRouting(new(25, 1, true));
+            // This is the catalog shape written by the previous release.
+            File.WriteAllText(Path.Combine(temp, "library.json"), System.Text.Json.JsonSerializer.Serialize(new { lib.State.Sounds, lib.State.Routing }));
             lib = new Library(temp, assets);
             var restored = lib.State.Sounds.Single(s => s.Id == id);
             Require(restored is { Name: "Renamed", Slot: 4, Favorite: true } && lib.State.Routing == new Routing(25, 1, true), "Library settings failed to round-trip.");
@@ -95,9 +97,17 @@ internal static class Program
             catch (InvalidDataException) { }
             lib.RememberFallbackHint();
             Require(new Library(temp, assets).State.FallbackHintSeen, "The successful fallback shortcut hint must be remembered.");
+            var staged = added with { Id = Guid.NewGuid() };
+            var missing = added with { Id = Guid.NewGuid() };
+            File.Copy(mono, lib.StagingFile(staged.Id));
+            try { lib.CommitImports([staged, missing]); throw new Exception("An incomplete batch was committed."); }
+            catch (FileNotFoundException) { }
+            Require(!File.Exists(Path.ChangeExtension(lib.StagingFile(staged.Id), null)) &&
+                    new Library(temp, assets).State.Sounds.Count == 6, "A failed batch must roll back its files and catalog.");
             string invalid = Path.Combine(temp, "bad.mp3");
             File.WriteAllText(invalid, "not an audio file");
-            Require(System.Threading.Tasks.Task.Run(() => NativeAudio.sb_decode(invalid, pcm, out _)).Result < 0, "Invalid media was accepted.");
+            try { ClipImporter.DecodeAsync(invalid, pcm).GetAwaiter().GetResult(); throw new Exception("Invalid media was accepted."); }
+            catch (InvalidDataException) { }
             File.WriteAllText(Path.Combine(temp, "library.json"), "{");
             try { _ = new Library(temp, assets); throw new Exception("Damaged library was silently replaced."); }
             catch (System.Text.Json.JsonException) { }

@@ -107,8 +107,13 @@ HRESULT decode(const wchar_t* source, const wchar_t* dest, int* duration) {
 }
 }
 
-extern "C" __declspec(dllexport) HRESULT sb_decode(const wchar_t* source, const wchar_t* dest, int* duration) noexcept {
-    try { return decode(source, dest, duration); }
+int wmain(int argc, wchar_t** argv) {
+    if (argc != 3) return E_INVALIDARG;
+    try {
+        int duration = 0;
+        const HRESULT hr = decode(argv[1], argv[2], &duration);
+        return FAILED(hr) ? hr : duration;
+    }
     catch (const std::bad_alloc&) { return E_OUTOFMEMORY; }
     catch (...) { return E_FAIL; }
 }

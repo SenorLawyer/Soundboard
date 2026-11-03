@@ -35,13 +35,13 @@ When editing a search, Left and Right move the caret. Up or Down moves focus int
 
 ## Files and routing
 
-Drag several files at once or use **Import**. Soundboard uses Windows Media Foundation for common formats and includes a local, audio-only FFmpeg decoder for the rest. Playback reads the decoded copy. You can import sources up to 256 MiB with up to five minutes of audio per clip.
+Drag several files or a folder onto the board, or use **Import**. A folder imports supported files directly inside it. Click the progress control to cancel a batch and keep the completed pads. Imports run in local decoder processes that close on cancellation. Playback reads the decoded copy. Each source can be up to 256 MiB with up to five minutes of audio.
 
 | Source | Examples |
 | --- | --- |
-| Music and voice notes | MP3, MP2, AAC, M4A/M4B, Ogg Vorbis, Opus, WMA, AMR |
+| Music and voice notes | MP3, MP2, AAC, M4A/M4B/M4R, Ogg Vorbis, Opus, WMA, AMR |
 | Lossless and production audio | WAV, Wave64, AIFF/AIFC, FLAC, ALAC in M4A, WavPack, APE, TTA, CAF, AU |
-| Video and surround audio | MP4, MOV, WebM, MKV/MKA, AVI, WMV, FLV, MPEG, TS/M2TS, AC-3, E-AC-3, DTS |
+| Video and surround audio | MP4, MOV, 3GP/3G2, WebM, MKV/MKA, AVI, WMV, FLV, OGV, MPEG, VOB, TS/MTS/M2TS, AC-3, E-AC-3, DTS |
 
 For video, the importer reads the first audio track. Files need a decodable audio track and must be free of DRM.
 

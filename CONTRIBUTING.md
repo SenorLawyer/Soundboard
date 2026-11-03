@@ -14,6 +14,13 @@ The first build downloads hash-pinned FFmpeg source and a portable GCC toolchain
 
 ## Audio changes
 
+To repeat the full file-drop check, generate the corpus with Python 3 and a full FFmpeg executable on your PATH. The generator uses synthetic tones and video frames plus one checksum-verified APE sample from FFmpeg's FATE suite.
+
+```powershell
+py -3 tests/generate-format-fixtures.py artifacts/format-corpus
+dotnet run --project tests/Checks -c Release -- --formats artifacts/format-corpus
+```
+
 The callback runs on Potato's audio thread. Keep allocation, disk access, managed calls and blocking waits out of it. Preserve existing audio on every bus. Add a focused test when changing a channel offset, playback lifetime, or sample conversion.
 
 For a hardware check, route a microphone to B1 and leave the music strip's B1 send off. Play one file while capturing **Voicemeeter Out B1**. Check that the clip and microphone reach the capture. Preview the same clip on A1 or A2 and check that B1 only carries its original mix.

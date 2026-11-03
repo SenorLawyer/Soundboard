@@ -23,6 +23,7 @@
     <InternalsVisibleTo Include="Soundboard.Checks" />
     <Content Include="Assets\Sounds\*.wav" CopyToOutputDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
     <Content Include="..\..\artifacts\native\$(Configuration)\Soundboard.Audio.dll" Link="Soundboard.Audio.dll" CopyToOutputDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+    <Content Include="..\..\artifacts\native\$(Configuration)\Soundboard.Media.exe" Link="Codecs\Soundboard.Media.exe" CopyToOutputDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
     <Content Include="..\..\artifacts\codecs\ffmpeg.exe" Link="Codecs\ffmpeg.exe" CopyToOutputDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
   </ItemGroup>
 </Project>

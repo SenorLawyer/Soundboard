@@ -20,8 +20,11 @@ public sealed class Library
     public static readonly string[] Extensions = [
         ".wav", ".wave", ".w64", ".mp3", ".mp2", ".m4a", ".m4b", ".aac", ".adts", ".flac", ".ogg", ".oga", ".opus",
         ".wma", ".aif", ".aiff", ".aifc", ".caf", ".au", ".snd", ".wv", ".ape", ".ac3", ".eac3", ".dts", ".amr", ".tta",
-        ".mp4", ".m4v", ".mov", ".webm", ".mkv", ".mka", ".avi", ".wmv", ".asf", ".flv", ".mpg", ".mpeg", ".ts", ".m2ts"
+        ".mp4", ".m4v", ".mov", ".webm", ".mkv", ".mka", ".avi", ".wmv", ".asf", ".flv", ".mpg", ".mpeg", ".ts", ".m2ts",
+        ".3gp", ".3g2", ".mts", ".vob", ".ogv", ".m4r"
     ];
+    private static readonly HashSet<string> AllowedExtensions = new(Extensions, StringComparer.OrdinalIgnoreCase);
+    public static bool Supports(string path) => AllowedExtensions.Contains(Path.GetExtension(path));
     private readonly string root;
     private readonly string assets;
     private readonly string index;
@@ -82,6 +85,28 @@ public sealed class Library
     }
 
     public void Add(Sound sound) => Save(State with { Sounds = [.. State.Sounds, sound] });
+    internal string StagingFile(Guid id) => Path.Combine(ClipsDirectory, id.ToString("N") + ".wav.part");
+
+    internal void CommitImports(IReadOnlyList<Sound> sounds)
+    {
+        var promoted = new List<string>(sounds.Count);
+        try
+        {
+            foreach (var sound in sounds)
+            {
+                var staged = StagingFile(sound.Id);
+                var wave = Path.ChangeExtension(staged, null);
+                File.Move(staged, wave);
+                promoted.Add(wave);
+            }
+            Save(State with { Sounds = [.. State.Sounds, .. sounds] });
+        }
+        catch
+        {
+            foreach (string file in promoted) File.Delete(file);
+            throw;
+        }
+    }
     public void Replace(Sound sound) => Save(State with { Sounds = State.Sounds.Select(s => s.Id == sound.Id ? sound : s).ToList() });
     public void SetRouting(Routing routing) => Save(State with { Routing = routing });
     public void RememberFallbackHint() => Save(State with { FallbackHintSeen = true });
