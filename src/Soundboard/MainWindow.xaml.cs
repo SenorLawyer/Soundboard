@@ -224,7 +224,9 @@ public partial class MainWindow : Window
                     });
                     if (quitting || quitAfterImport) return;
                     File.Move(temp, path);
-                    var sound = new Sound(id, Path.GetFileNameWithoutExtension(file.Name), ms, id.ToByteArray()[0] % 6, file.Extension[1..].ToUpperInvariant());
+                    var name = Path.GetFileNameWithoutExtension(file.Name).Trim();
+                    if (name.Length == 0) name = "Untitled sound";
+                    var sound = new Sound(id, name, ms, id.ToByteArray()[0] % 6, file.Extension[1..].ToUpperInvariant());
                     try { library.Add(sound); } catch { File.Delete(path); throw; }
                     first ??= id;
                     added++;

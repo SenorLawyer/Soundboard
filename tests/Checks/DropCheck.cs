@@ -39,8 +39,10 @@ internal static class DropCheck
             long point = ((long)(int)pt.Y << 32) | (uint)(int)pt.X;
             var data = new DataObject();
             var source = Path.Combine(root, "Drop check.wav");
+            var unnamed = Path.Combine(root, ".wav");
             File.Copy(library.FileFor(library.State.Sounds[0]), source);
-            data.SetData(DataFormats.FileDrop, new[] { source });
+            File.Copy(source, unnamed);
+            data.SetData(DataFormats.FileDrop, new[] { source, unnamed });
             var transfer = Marshal.GetComInterfaceForObject(data, typeof(ComData));
             try
             {
@@ -54,7 +56,7 @@ internal static class DropCheck
             }
             finally { Marshal.Release(transfer); Marshal.Release(target); }
             var clock = Stopwatch.StartNew();
-            while (library.State.Sounds.Count == 6 && clock.Elapsed < TimeSpan.FromSeconds(10))
+            while (library.State.Sounds.Count < 8 && clock.Elapsed < TimeSpan.FromSeconds(10))
             {
                 var frame = new DispatcherFrame();
                 Dispatcher.CurrentDispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, () => frame.Continue = false);
@@ -62,6 +64,8 @@ internal static class DropCheck
                 System.Threading.Thread.Sleep(10);
             }
             var added = library.State.Sounds.Single(s => s.Name == "Drop check");
+            var restored = new Library(root, Path.Combine(AppContext.BaseDirectory, "Assets", "Sounds"));
+            if (!restored.State.Sounds.Any(s => s.Name == "Untitled sound")) throw new Exception("A nameless file needs a usable library name.");
             var search = (TextBox)window.FindName("Search");
             search.Text = "dck";
             var list = (ListBox)window.FindName("Sounds");
